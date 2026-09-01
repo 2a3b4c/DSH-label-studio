@@ -1,0 +1,25 @@
+# Optional Label Studio Bundle layer. The original layout row remains in the
+# lower Web Bundle and is disabled only while this Bundle participates.
+- id: ui-layout
+  disabled: true
+
+- insert:
+    - id: label-studio
+      name: 'dsh-label-studio-workbench'
+      config:
+        baseUrl: !!js process.env.DSH_LABEL_STUDIO_BASE_URL ?? 'http://127.0.0.1:8080'
+        launchMode: !!js process.env.DSH_LABEL_STUDIO_LAUNCH_MODE ?? 'conda'
+        condaExecutable: !!js process.env.DSH_LABEL_STUDIO_CONDA_EXECUTABLE ?? 'conda'
+        condaEnvironment: !!js process.env.DSH_LABEL_STUDIO_CONDA_ENVIRONMENT ?? 'label-studio'
+        labelStudioExecutable: !!js process.env.DSH_LABEL_STUDIO_EXECUTABLE ?? 'label-studio'
+        refreshTokenCredential: LABEL_STUDIO_PAT
+        startupTimeoutMs: 120000
+        shutdownGraceMs: 5000
+        restResponseMaxBytes: 8388608
+        activeTaskMaxBytes: 262144
+        focusAckTimeoutMs: 5000
+        contextLeaseTtlMs: 30000
+        eventWaitTimeoutMs: 25000
+        eventHistorySize: 64
+        contextOpenRetryMs: 1000
+        contextCloseTimeoutMs: 1000
