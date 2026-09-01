@@ -1,4 +1,4 @@
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client';
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store';
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots';
 import { NS } from './locales.ts';
 import type { LabelStudioPanelSnapshot } from './panel-state.ts';

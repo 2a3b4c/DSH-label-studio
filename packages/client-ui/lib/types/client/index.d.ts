@@ -1,5 +1,7 @@
 /** Browser assembly for the Label Studio replacement root. */
-import type { ClientContext, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client';
+import type { Context as ClientContext } from '@deepseek-ai/cordis';
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store';
+import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import { type LabelStudioPanelSnapshot } from './panel-state.ts';
 import { type LabelStudioContextSnapshot } from './context-state.ts';
 import { type LabelStudioTargetInput } from './task-url.ts';
@@ -44,7 +46,7 @@ export interface LabelStudioRootInjected {
         labelStudioContext: SnapshotStore<LabelStudioContextSnapshot>;
     };
     baseUrl: string;
-    bindSession: (sessionId: import('@deepseek-ai/dsh-client-runtime/client').SessionId | undefined) => void;
+    bindSession: (sessionId: SessionId | undefined) => void;
     confirmApplied: (navigationRevision: number) => void;
     selectTarget: (input: LabelStudioTargetInput) => Promise<void>;
     close: () => void;

@@ -1,19 +1,19 @@
 /** Typed browser caller for the Label Studio Connection channel. */
-import type { ConnectionHandle, HostDescription, RpcError } from '@deepseek-ai/dsh-client-connection/client';
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client';
+import type { ConnectionGeneration, ConnectionHandle, ConnectionRpcFailure } from '@deepseek-ai/dsh-client-connection/client';
+import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type { LabelStudioActiveContext, LabelStudioActiveTarget, LabelStudioEventBatch, LabelStudioFocusCorrelationId, LabelStudioContextSourceId, LabelStudioLeaseOpenResult, LabelStudioLeaseSnapshot, LabelStudioNavigationSequence, LabelStudioRpcError, LabelStudioTargetReservation } from 'dsh-label-studio-workbench/protocol';
 /** Browser dependencies for one logical Label Studio channel. */
 export interface LabelStudioBridgeClientOptions {
-    readonly connection: Pick<ConnectionHandle, 'rpc' | 'hostDescription'>;
+    readonly connection: Pick<ConnectionHandle, 'rpc' | 'generation'>;
     readonly channel: '/label-studio';
 }
 /** Deterministic failure returned by the Connection framework. */
 export declare class LabelStudioFrameworkFailure extends Error {
-    readonly error: RpcError;
+    readonly error: ConnectionRpcFailure;
     /** Stable failure category. */
     readonly kind = "framework";
     /** @param error - sanitized Connection failure. */
-    constructor(error: RpcError);
+    constructor(error: ConnectionRpcFailure);
 }
 /** Deterministic failure returned by the Label Studio plugin. */
 export declare class LabelStudioPluginFailure extends Error {
@@ -67,7 +67,7 @@ export declare class LabelStudioContextBridge {
      * Read the current connected Host generation.
      * @returns connected Host description, or absence during disconnection.
      */
-    currentHost(): HostDescription | undefined;
+    currentHost(): ConnectionGeneration | undefined;
     /**
      * Subscribe to Host generation replacement and loss.
      * @param listener - generation-change callback.

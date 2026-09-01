@@ -1,4 +1,4 @@
-import { type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client';
+import { type EngineStoreHandle } from '@deepseek-ai/dsh-client-store';
 /** Replacement-root panel preferences. */
 export interface LabelStudioLayoutState {
     sidebar: number;

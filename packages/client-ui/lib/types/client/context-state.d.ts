@@ -1,6 +1,6 @@
 /** Browser state machine for Session-bound controlled Label Studio pages. */
-import { type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client';
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client';
+import { type SnapshotStore } from '@deepseek-ai/dsh-client-store';
+import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import type { LabelStudioActiveTarget, LabelStudioBrowserEvent, LabelStudioContextSourceId, LabelStudioLeaseSnapshot, LabelStudioNavigationSequence } from 'dsh-label-studio-workbench/protocol';
 import { type LabelStudioContextBridge } from './context-bridge.ts';
 /** Controlled iframe operations owned by the panel controller. */

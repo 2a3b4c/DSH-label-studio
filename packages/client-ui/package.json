@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-label-studio",
   "description": "Client replacement root with a docked, keep-alive Label Studio workbench",
-  "version": "0.1.0-rc.7",
+  "version": "0.2.0-alpha.1",
   "publishConfig": {
     "access": "public"
   },
@@ -34,7 +34,9 @@
       "inject": [
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-locale",
-        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-store",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-session",
         "@deepseek-ai/dsh-client-ui-theme"
       ],
       "platform": "web"
@@ -49,29 +51,33 @@
   "license": "MIT",
   "peerDependencies": {
     "react": "^18.2.0",
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-theme": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-invariants": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-label-studio-protocol": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.7"
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-client-connection": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-store": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-renderer": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-session": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-theme": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-invariants": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-label-studio-protocol": "^0.2.0-alpha.1",
+    "@deepseek-ai/dsh-client-locale": "^0.1.2-alpha.3"
   },
   "devDependencies": {
     "@types/react": "~18.3.1",
     "react": "^18.2.0",
-    "@deepseek-ai/dsh-client-test-runtime": "^0.1.0-rc.7",
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-layout": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-theme": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-label-studio-protocol": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-invariants": "^0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.7"
+    "@deepseek-ai/dsh-client-test-runtime": "^0.1.2-alpha.3",
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-client-connection": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-locale": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-store": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-layout": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-renderer": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-session": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-theme": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-label-studio-protocol": "^0.2.0-alpha.1",
+    "@deepseek-ai/dsh-invariants": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.2-alpha.3"
   },
   "scripts": {
     "bundle": "tsdown",

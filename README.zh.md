@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-面向 DSH Web 界面的可安装 Label Studio Bundle。一个 tarball 同时包含 Host 运行时、浏览器 Client、共享协议声明，以及用兼容布局和右侧 Label Studio iframe 替换 Web 根组件的 patch。
+面向 DSH Web 界面的可安装 Label Studio Bundle。仓库根包同时包含 Host 运行时、浏览器 Client、共享协议声明，以及用兼容布局和右侧 Label Studio iframe 替换 Web 根组件的 patch。`0.2.0-alpha.1` 适配 DSH `0.1.2-alpha.3`。
 
 ## 装配
 
@@ -17,10 +17,10 @@
       name: 'dsh-label-studio-workbench'
 ```
 
-本仓库提供可运行的 [`examples/label-studio/cordis.yml`](../../../examples/label-studio/cordis.yml) overlay：
+安装和卸载命令见 [`INSTALL.zh.md`](INSTALL.zh.md)。安装后的 Bundle patch 会自动参与 Web Profile 装配，无需修改 DSH 源码：
 
 ```sh
-pnpm dsh web --patch examples/label-studio/cordis.yml
+dsh plugin --profile web add --workspace-root github:2a3b4c/DSH-label-studio
 ```
 
 插件先检查配置的 `/health` 端点。服务健康时直接复用，并且不会在退出时停止它。端点不可用时按 `launchMode` 处理：`conda` 不依赖 shell 激活状态，直接运行指定环境；`executable` 直接运行 Label Studio 控制台程序；`external` 把进程启动交给用户。插件会在 `startupTimeoutMs` 内等待就绪，并且只终止自己创建的进程树。
@@ -72,7 +72,7 @@ Bundle patch 会在 DSH 启动前读取 `DSH_LABEL_STUDIO_LAUNCH_MODE`、`DSH_LA
 
 ## 上下文通道
 
-Host 通过 `ctx.connection.rpc.handle()` 注册 `/label-studio`，并设置 `authority: loopback`；Connection 会在插件代码运行前应用 Host、Origin 和跨站请求检查。六个端点分别用于打开和关闭租约、预留和发布受控 target、等待 revision 事件，以及确认 Host focus 请求。Connection 的外层 `RpcResult` 携带内嵌的 Label Studio outcome，其中错误码稳定且信息已经脱敏。这个通道绝不携带样本数据、annotation result、凭据或 Token。
+Host 通过 `ctx.connection.rpc.handle()` 注册 `/label-studio`；DSH `0.1.2-alpha.3` 的 Connection 会在插件代码运行前统一应用 Host、Origin、浏览器认证和跨站请求检查。六个端点分别用于打开和关闭租约、预留和发布受控 target、等待 revision 事件，以及确认 Host focus 请求。Connection 的外层 `RpcResult` 携带内嵌的 Label Studio outcome，其中错误码稳定且信息已经脱敏。这个通道绝不携带样本数据、annotation result、凭据或 Token。
 
 `LabelStudioContextRegistry` 允许每个 DSH Session 持有一个有过期时间的浏览器 source 租约。打开租约和每次等待都会验证实时 `ctx.sessions` 条目或冷态 `ctx.sessionPersistence` 元数据；持久化读取失败或被取消时不会续期。`LabelStudioChangeBroker` 保存有界且按 Session 隔离的 revision 后缀，能够报告回放重置，并支持可取消长轮询和幂等 focus 确认。异步释放插件时，共享操作门会先一起关闭工具和 RPC，再释放 broker、注册表和运行时状态。
 

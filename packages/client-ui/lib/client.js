@@ -5,7 +5,7 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let react_jsx_runtime = require("react/jsx-runtime");
-		let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
+		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
 		let react = require("react");
 		//#region src/client/LabelStudioAction.tsx
 		/** Render the Session-header workbench toggle. */
@@ -69,7 +69,7 @@ window.__ModuleLoader__.load({
 		var LabelStudioPanelController = class {
 			baseUrl;
 			/** Observable browser-local panel state. */
-			store = (0, _deepseek_ai_dsh_client_runtime_client.createSnapshotStore)({
+			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)({
 				open: false,
 				mounted: false,
 				reloadRevision: 0,
@@ -251,7 +251,7 @@ window.__ModuleLoader__.load({
 			* @returns connected Host description, or absence during disconnection.
 			*/
 			currentHost() {
-				return this.connection.hostDescription.getSnapshot();
+				return this.connection.generation.getSnapshot();
 			}
 			/**
 			* Subscribe to Host generation replacement and loss.
@@ -259,7 +259,7 @@ window.__ModuleLoader__.load({
 			* @returns listener disposer.
 			*/
 			onHostChanged(listener) {
-				return this.connection.hostDescription.subscribe(listener);
+				return this.connection.generation.subscribe(listener);
 			}
 			/**
 			* Open the selected Session for this browser page.
@@ -575,7 +575,7 @@ window.__ModuleLoader__.load({
 				this.page = page;
 				this.options = options;
 				this.clock = clock;
-				this.store = (0, _deepseek_ai_dsh_client_runtime_client.createSnapshotStore)({
+				this.store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)({
 					sourceId,
 					navigationSequence: 0,
 					targetRevision: 0,
@@ -1547,7 +1547,7 @@ window.__ModuleLoader__.load({
 			});
 		}
 		/** Render the original four child slots and the package-private workbench in one root. */
-		function LabelStudioRoot({ useStore, actions, useSessions, renderSlot, useLabelStudioPanel, useLabelStudioContext, baseUrl, bindSession, confirmApplied, selectTarget, close, reload, openExternal, t }) {
+		function LabelStudioRoot({ useStore, actions, useSessions, renderSlot, SessionProvider, useLabelStudioPanel, useLabelStudioContext, baseUrl, bindSession, confirmApplied, selectTarget, close, reload, openExternal, t }) {
 			const panels = useStore((state) => state);
 			const selectedSession = useSessions((unknownState) => unknownState.current);
 			const liveSession = useSessions((unknownState) => {
@@ -1621,7 +1621,7 @@ window.__ModuleLoader__.load({
 					}),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 						className: LabelStudioRoot_module_css_default.detailsCol,
-						children: renderSlot("details", {})
+						children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(SessionProvider, { children: renderSlot("details", {}) })
 					}),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(LabelStudioPanel, {
 						useLabelStudioPanel,
@@ -1687,7 +1687,7 @@ window.__ModuleLoader__.load({
 		* @returns an independent store handle for one replacement-root registration.
 		*/
 		function createLabelStudioLayoutStore() {
-			return (0, _deepseek_ai_dsh_client_runtime_client.defineStore)({
+			return (0, _deepseek_ai_dsh_client_store.defineStore)({
 				init: () => ({
 					sidebar: 280,
 					details: 0,

@@ -1,6 +1,6 @@
 # Label Studio 工作台插件安装
 
-本教程将预构建的 `dsh-label-studio-workbench` tarball 安装到 DSH `web` Profile，并验证安装、更新和卸载。插件包同时提供 Host、浏览器 Client、协议类型和 `cordis.patch.yml`；安装只修改 Profile，不修改 DeepSeek Harness 的 `packages/` 源码。
+本教程将 `dsh-label-studio-workbench` 安装到 DSH `web` Profile，并验证安装、更新和卸载。插件包同时提供 Host、浏览器 Client、协议类型和 `cordis.patch.yml`；安装只修改 Profile，不修改 DeepSeek Harness 的 `packages/` 源码。`0.2.0-alpha.1` 适配 DSH `0.1.2-alpha.3`，不兼容已经移除 `dsh-client-runtime` 的更早插件构建。
 
 ## 1. 检查环境
 
@@ -26,23 +26,41 @@ LABEL_STUDIO_PAT: "在本机填写完整 refresh 值"
 chmod 600 ~/.dsh/.credentials.yaml
 ```
 
-## 2. 安装 tarball
+## 2. 安装插件
 
-先停止正在运行的 DSH。将变量设为收到的 `.tgz` 文件绝对路径：
+从 GitHub 安装已经推送的版本：
 
 ```sh
-LABEL_STUDIO_TARBALL=/absolute/path/to/dsh-label-studio-workbench-0.1.0-rc.8.tgz
+dsh plugin --profile web add --workspace-root github:2a3b4c/DSH-label-studio
+```
+
+从 DeepSeek Harness 源码仓库运行 CLI 时，写成：
+
+```sh
+corepack pnpm dsh plugin --profile web add --workspace-root github:2a3b4c/DSH-label-studio
+```
+
+开发者测试尚未推送的本地目录时，传独立插件仓库的绝对路径：
+
+```sh
+corepack pnpm dsh plugin --profile web add --workspace-root /Users/xinlongzhang/PycharmProjects/dsh-label-studio-plugin-package
+```
+
+也可以安装预构建 tarball。先停止正在运行的 DSH，将变量设为收到的 `.tgz` 文件绝对路径：
+
+```sh
+LABEL_STUDIO_TARBALL=/absolute/path/to/dsh-label-studio-workbench-0.2.0-alpha.1.tgz
 dsh plugin --profile web add --workspace-root "$LABEL_STUDIO_TARBALL"
 ```
 
 在 DeepSeek Harness 源码仓库中运行 CLI 时，使用仓库声明的 pnpm 版本：
 
 ```sh
-LABEL_STUDIO_TARBALL=/absolute/path/to/dsh-label-studio-workbench-0.1.0-rc.8.tgz
+LABEL_STUDIO_TARBALL=/absolute/path/to/dsh-label-studio-workbench-0.2.0-alpha.1.tgz
 corepack pnpm dsh plugin --profile web add --workspace-root "$LABEL_STUDIO_TARBALL"
 ```
 
-`dsh plugin` 把后续参数转发给 Profile 目录内的 pnpm。`--workspace-root` 允许 pnpm 修改该 Profile 工作区的根 `package.json`，它不是 Bundle 配置字段。
+`dsh plugin` 把后续参数转发给 Profile 目录内的 pnpm。`--workspace-root` 允许 pnpm 修改该 Profile 工作区的根 `package.json`，它不是 Bundle 配置字段。GitHub 安装使用仓库根 `package.json`，不依赖仓库中的 `dist/*.tgz`。
 
 安装成功时，输出包含 `dependencies: + dsh-label-studio-workbench`。下面的配置检查应显示 `# == dsh-label-studio-workbench`、disabled 的原 `ui-layout` 和新增的 `label-studio` 行，不应出现单独的 `client-ui-label-studio` 行：
 
@@ -121,13 +139,14 @@ dsh web
 corepack pnpm pack --pack-destination ./dist
 ```
 
-将 `dist/` 中新生成的 `.tgz` 交给使用者即可。tarball 已包含运行所需的 Host、Client 和协议产物，安装时不需要执行 TypeScript 构建脚本。
+将新生成的 `.tgz` 交给使用者即可。tarball 是 npm 发布文件集合的快照；GitHub 安装则直接读取仓库根文件。两种方式都使用已经提交的 Host、Client 和协议产物，安装时不执行 TypeScript 构建脚本。
 
 ## 常见错误
 
 | 第一条具体错误 | 处理方法 |
 |---|---|
 | `ERR_PNPM_ADDING_TO_ROOT` | 安装或卸载命令缺少 `--workspace-root`。 |
+| `client-modules: require("@deepseek-ai/dsh-client-runtime/client") missed the module table` | 安装了适配旧 DSH 的插件；升级到 `0.2.0-alpha.1` 或更新版本。 |
 | `LABEL_STUDIO_PAT is not configured` | 页面仍可使用，但 REST 工具不可认证；在 DSH 凭据系统中配置完整 refresh 值。 |
 | `EADDRINUSE` | 明确停止占用 3080 或 8080 的旧进程后重试。 |
 | `Conda environment ... not found` | 确认 `conda run -n label-studio label-studio --version` 成功。 |

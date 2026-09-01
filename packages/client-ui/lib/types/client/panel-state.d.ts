@@ -1,4 +1,4 @@
-import { type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client';
+import { type SnapshotStore } from '@deepseek-ai/dsh-client-store';
 import type { LabelStudioActiveTarget } from 'dsh-label-studio-workbench/protocol';
 /** Browser-local panel facts. */
 export interface LabelStudioPanelSnapshot {

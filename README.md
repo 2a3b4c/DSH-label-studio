@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Installable Label Studio Bundle for the DSH Web surface. One tarball contains the Host runtime, browser Client, shared protocol declarations, and the patch that replaces the Web root with a compatible layout and right-side Label Studio iframe.
+Installable Label Studio Bundle for the DSH Web surface. The root package contains the Host runtime, browser Client, shared protocol declarations, and the patch that replaces the Web root with a compatible layout and right-side Label Studio iframe. Version `0.2.0-alpha.1` targets DSH `0.1.2-alpha.3`.
 
 ## Composition
 
@@ -17,10 +17,10 @@ Install this package with the Harness. Its manifest declares both `dsh.bundle` a
       name: 'dsh-label-studio-workbench'
 ```
 
-This repository provides the runnable [`examples/label-studio/cordis.yml`](../../../examples/label-studio/cordis.yml) overlay:
+See [`INSTALL.zh.md`](INSTALL.zh.md) for install and removal commands. Once installed, the Bundle patch participates in the Web Profile without modifying DSH source:
 
 ```sh
-pnpm dsh web --patch examples/label-studio/cordis.yml
+dsh plugin --profile web add --workspace-root github:2a3b4c/DSH-label-studio
 ```
 
 The plugin first probes the configured `/health` endpoint. It adopts a healthy service without later stopping it. An unavailable endpoint follows `launchMode`: `conda` runs the named environment without depending on shell activation, `executable` runs a Label Studio console executable directly, and `external` leaves process startup to the operator. The plugin waits up to `startupTimeoutMs` and terminates only a process tree it created.
@@ -72,7 +72,7 @@ Label Studio 1.22.0 was verified to serve its login page without `X-Frame-Option
 
 ## Context channel
 
-The Host registers `/label-studio` through `ctx.connection.rpc.handle()` with `authority: loopback`; Connection applies its Host, Origin, and cross-site request checks before plugin code runs. Six endpoints open and close leases, reserve and publish controlled targets, wait for revision events, and acknowledge Host focus requests. Connection's outer `RpcResult` carries a nested Label Studio outcome with stable, sanitized errors. The channel never carries sample data, annotation results, credentials, or tokens.
+The Host registers `/label-studio` through `ctx.connection.rpc.handle()`; DSH `0.1.2-alpha.3` Connection applies Host, Origin, browser-authentication, and cross-site request checks before plugin code runs. Six endpoints open and close leases, reserve and publish controlled targets, wait for revision events, and acknowledge Host focus requests. Connection's outer `RpcResult` carries a nested Label Studio outcome with stable, sanitized errors. The channel never carries sample data, annotation results, credentials, or tokens.
 
 `LabelStudioContextRegistry` permits one expiring browser-source lease per DSH Session. Open and every wait validate either a live `ctx.sessions` entry or cold `ctx.sessionPersistence` metadata; a failed or cancelled persistence read does not renew the lease. `LabelStudioChangeBroker` keeps a bounded, Session-isolated revision suffix, reports replay resets, and supports cancellable long polling and idempotent focus acknowledgements. The shared operation gate closes tools and RPC together during asynchronous package disposal before broker, registry, and runtime state is released.
 
