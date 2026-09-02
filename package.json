@@ -1,7 +1,7 @@
 {
   "name": "dsh-label-studio-workbench",
   "description": "Label Studio plugin: managed local server, PAT-authenticated REST tools, and a docked browser workbench",
-  "version": "0.2.0-alpha.1",
+  "version": "0.2.0-alpha.2",
   "publishConfig": {
     "access": "public"
   },
@@ -49,6 +49,7 @@
     }
   },
   "files": [
+    "configure-pat.mjs",
     "lib/index.js",
     "lib/invariant.js",
     "cordis.patch.yml",
@@ -83,6 +84,7 @@
     "react": "^18.2.0"
   },
   "scripts": {
+    "configure-pat": "node configure-pat.mjs",
     "test": "node --test tests/*.test.mjs"
   }
 }

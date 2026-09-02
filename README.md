@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-Installable Label Studio Bundle for the DSH Web surface. The root package contains the Host runtime, browser Client, shared protocol declarations, and the patch that replaces the Web root with a compatible layout and right-side Label Studio iframe. Version `0.2.0-alpha.1` targets DSH `0.1.2-alpha.3`.
+Installable Label Studio Bundle for the DSH Web surface. The root package contains the Host runtime, browser Client, shared protocol declarations, and the patch that replaces the Web root with a compatible layout and right-side Label Studio iframe. Version `0.2.0-alpha.2` targets DSH `0.1.2-alpha.3`.
 
 ## Composition
 
@@ -20,20 +20,21 @@ Install this package with the Harness. Its manifest declares both `dsh.bundle` a
 See [`INSTALL.zh.md`](INSTALL.zh.md) for install and removal commands. Once installed, the Bundle patch participates in the Web Profile without modifying DSH source:
 
 ```sh
-dsh plugin --profile web add --workspace-root github:2a3b4c/DSH-label-studio
+LABEL_STUDIO_PLUGIN_PACKAGE=/absolute/path/to/dsh-label-studio-plugin-package
+npx @deepseek-ai/dsh@0.1.2-alpha.3 plugin --profile web add --workspace-root "$LABEL_STUDIO_PLUGIN_PACKAGE"
 ```
 
-The plugin first probes the configured `/health` endpoint. It adopts a healthy service without later stopping it. An unavailable endpoint follows `launchMode`: `conda` runs the named environment without depending on shell activation, `executable` runs a Label Studio console executable directly, and `external` leaves process startup to the operator. The plugin waits up to `startupTimeoutMs` and terminates only a process tree it created.
+Classroom distribution uses a regular archive of the package directory. Extract it completely, pass the extracted plugin root's absolute path to the install command, and keep that directory in place because the Profile records a `link:` dependency.
+
+The plugin first probes the configured `/health` endpoint. It adopts a healthy service without later stopping it. When the endpoint is unavailable, `python` mode runs Label Studio through the configured global Python executable, while `external` mode fails startup and leaves process ownership to the operator. The plugin waits up to `startupTimeoutMs` for a process it starts and terminates only that process tree.
 
 ## Configuration
 
 | Field | Default | Meaning |
 |---|---:|---|
 | `baseUrl` | `http://127.0.0.1:8080` | Loopback HTTP(S) endpoint used by the iframe and REST client. Credentials, query strings, fragments, and non-loopback hosts are rejected. |
-| `launchMode` | `conda` | Behavior when the health probe fails: `conda`, `executable`, or `external`. |
-| `condaExecutable` | `conda` | Bare or absolute Conda executable resolved through `ctx.subprocess`. |
-| `condaEnvironment` | `label-studio` | Conda environment containing the `label-studio` command. |
-| `labelStudioExecutable` | `label-studio` | Bare or absolute console executable used by `executable` mode, including a Windows virtual-environment `.exe`. |
+| `launchMode` | `python` | Behavior when the health probe fails: start through `python`, or require an already healthy `external` service. |
+| `pythonExecutable` | `python` | Bare or absolute global Python executable whose environment contains the `label-studio` package. |
 | `refreshTokenCredential` | `LABEL_STUDIO_PAT` | Credential reference for the full Label Studio personal-access-token refresh value, resolved through `ctx.credentials` for every authenticated REST operation. `apiKeyEnv` is invalid and rejected. |
 | `startupTimeoutMs` | `120000` | Positive readiness deadline; cold database migrations run inside this interval. |
 | `shutdownGraceMs` | `5000` | Positive TERM-to-KILL grace for a process started by this plugin. |
@@ -48,9 +49,9 @@ The plugin first probes the configured `/health` endpoint. It adopts a healthy s
 
 Only the fields in this table are accepted; unknown fields fail during plugin configuration instead of being ignored. `allowDirectAnnotationUpdate` is explicitly unsupported because prediction creation is the only model write path in controlled-task V1.
 
-The Bundle patch reads `DSH_LABEL_STUDIO_LAUNCH_MODE`, `DSH_LABEL_STUDIO_EXECUTABLE`, `DSH_LABEL_STUDIO_CONDA_EXECUTABLE`, and `DSH_LABEL_STUDIO_CONDA_ENVIRONMENT` before DSH starts. For a Windows virtual environment, set executable mode and point `DSH_LABEL_STUDIO_EXECUTABLE` at `.venv\\Scripts\\label-studio.exe`. A pip installation whose `label-studio` console script is already on the DSH process `PATH` can use executable mode with its default executable. Docker, a system service, or a manually started server uses external mode. Python is a Label Studio runtime dependency, not a dependency of the TypeScript plugin itself.
+The Bundle patch reads `DSH_LABEL_STUDIO_LAUNCH_MODE` and `DSH_LABEL_STUDIO_PYTHON_EXECUTABLE` before DSH starts. Python mode resolves that executable and runs `python -m label_studio.server`; install Label Studio into the same global Python with `python -m pip install label-studio`. Set an absolute executable when the intended command is not named `python`, including `python3` on some systems. Docker, a system service, or a manually started server uses external mode and must return `{"status":"UP"}` from the configured `/health` endpoint before the plugin loads. Python and Label Studio are runtime dependencies, not dependencies of the TypeScript package.
 
-Configuration carries only the credential reference. Create a personal access token on Label Studio's Account page, copy the complete refresh token when it is shown, and store it under the referenced DSH credential. Label Studio's database retains only a truncated unsigned representation, so the complete value cannot be recovered from `label_studio.sqlite3` later. For each authenticated operation, the plugin resolves the reference again, exchanges the refresh token at `/api/token/refresh/`, and sends the returned access token as `Bearer` authentication. It does not cache either token across operations. Refresh and business responses are counted from the decoded stream and rejected above `restResponseMaxBytes`; errors retain only fixed operation, path, and status facts and never include either token or the response body. Cancellation observed before a business mutation dispatch prevents the write. Once dispatched, transport failure, cancellation, or an invalid success response reports that submission status is unknown and never retries automatically.
+Configuration carries only the credential reference. Create a personal access token on Label Studio's Account page, copy the complete refresh token when it is shown, then run `npm run configure-pat` from the extracted plugin root. This cross-platform script masks input and adds or replaces `LABEL_STUDIO_PAT` in `$DSH_HOME/.env` without writing an environment file inside the plugin directory; see [`INSTALL.zh.md`](INSTALL.zh.md) for the complete procedure. Label Studio's database retains only a truncated unsigned representation, so the complete value cannot be recovered from `label_studio.sqlite3` later. For each authenticated operation, the plugin resolves the reference again, exchanges the refresh token at `/api/token/refresh/`, and sends the returned access token as `Bearer` authentication. It does not cache either token across operations. Refresh and business responses are counted from the decoded stream and rejected above `restResponseMaxBytes`; errors retain only fixed operation, path, and status facts and never include either token or the response body. Cancellation observed before a business mutation dispatch prevents the write. Once dispatched, transport failure, cancellation, or an invalid success response reports that submission status is unknown and never retries automatically.
 
 ## Tools
 

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-label-studio",
   "description": "Client replacement root with a docked, keep-alive Label Studio workbench",
-  "version": "0.2.0-alpha.1",
+  "version": "0.2.0-alpha.2",
   "publishConfig": {
     "access": "public"
   },
@@ -59,7 +59,7 @@
     "@deepseek-ai/dsh-client-ui-slots": "^0.1.2-alpha.3",
     "@deepseek-ai/dsh-client-ui-theme": "^0.1.2-alpha.3",
     "@deepseek-ai/dsh-invariants": "^0.1.2-alpha.3",
-    "@deepseek-ai/dsh-label-studio-protocol": "^0.2.0-alpha.1",
+    "@deepseek-ai/dsh-label-studio-protocol": "^0.2.0-alpha.2",
     "@deepseek-ai/dsh-client-locale": "^0.1.2-alpha.3"
   },
   "devDependencies": {
@@ -75,7 +75,7 @@
     "@deepseek-ai/dsh-client-ui-session": "^0.1.2-alpha.3",
     "@deepseek-ai/dsh-client-ui-theme": "^0.1.2-alpha.3",
     "@deepseek-ai/dsh-client-ui-slots": "^0.1.2-alpha.3",
-    "@deepseek-ai/dsh-label-studio-protocol": "^0.2.0-alpha.1",
+    "@deepseek-ai/dsh-label-studio-protocol": "^0.2.0-alpha.2",
     "@deepseek-ai/dsh-invariants": "^0.1.2-alpha.3",
     "@deepseek-ai/dsh-client-ui-conversation": "^0.1.2-alpha.3"
   },

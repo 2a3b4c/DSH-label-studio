@@ -15,7 +15,7 @@ export { LabelStudioContextError, LabelStudioContextRegistry } from './context-r
 export type { LabelStudioContextErrorCode, LabelStudioLeaseBinding, } from './context-registry.ts';
 export { registerLabelStudioContextRpc } from './context-rpc.ts';
 export type { LabelStudioContextRpcOptions } from './context-rpc.ts';
-export { Config, DEFAULT_ACTIVE_TASK_MAX_BYTES, DEFAULT_CONDA_ENVIRONMENT, DEFAULT_CONTEXT_LEASE_TTL_MS, DEFAULT_CONTEXT_CLOSE_TIMEOUT_MS, DEFAULT_CONTEXT_OPEN_RETRY_MS, DEFAULT_EVENT_HISTORY_SIZE, DEFAULT_EVENT_WAIT_TIMEOUT_MS, DEFAULT_FOCUS_ACK_TIMEOUT_MS, DEFAULT_LABEL_STUDIO_BASE_URL, DEFAULT_LABEL_STUDIO_EXECUTABLE, DEFAULT_LABEL_STUDIO_LAUNCH_MODE, DEFAULT_REFRESH_TOKEN_CREDENTIAL, DEFAULT_REST_RESPONSE_MAX_BYTES, DEFAULT_SHUTDOWN_GRACE_MS, DEFAULT_STARTUP_TIMEOUT_MS, resolveConfig, } from './config.ts';
+export { Config, DEFAULT_ACTIVE_TASK_MAX_BYTES, DEFAULT_CONTEXT_LEASE_TTL_MS, DEFAULT_CONTEXT_CLOSE_TIMEOUT_MS, DEFAULT_CONTEXT_OPEN_RETRY_MS, DEFAULT_EVENT_HISTORY_SIZE, DEFAULT_EVENT_WAIT_TIMEOUT_MS, DEFAULT_FOCUS_ACK_TIMEOUT_MS, DEFAULT_LABEL_STUDIO_BASE_URL, DEFAULT_LABEL_STUDIO_LAUNCH_MODE, DEFAULT_PYTHON_EXECUTABLE, DEFAULT_REFRESH_TOKEN_CREDENTIAL, DEFAULT_REST_RESPONSE_MAX_BYTES, DEFAULT_SHUTDOWN_GRACE_MS, DEFAULT_STARTUP_TIMEOUT_MS, resolveConfig, } from './config.ts';
 export type { LabelStudioLaunchMode, ResolvedConfig } from './config.ts';
 export { disposeLabelStudioResources, LabelStudioOperationClosedError, LabelStudioOperationGate, } from './lifecycle.ts';
 export type { LabelStudioShutdownResources } from './lifecycle.ts';

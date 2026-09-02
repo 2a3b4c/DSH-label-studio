@@ -1,154 +1,167 @@
 # Label Studio 工作台插件安装
 
-本教程将 `dsh-label-studio-workbench` 安装到 DSH `web` Profile，并验证安装、更新和卸载。插件包同时提供 Host、浏览器 Client、协议类型和 `cordis.patch.yml`；安装只修改 Profile，不修改 DeepSeek Harness 的 `packages/` 源码。`0.2.0-alpha.1` 适配 DSH `0.1.2-alpha.3`，不兼容已经移除 `dsh-client-runtime` 的更早插件构建。
+本教程将 `dsh-label-studio-workbench` 安装到 DSH `web` Profile，并验证安装、更新和卸载。插件包同时提供 Host、浏览器 Client、协议类型和 `cordis.patch.yml`；安装只修改 Profile，不修改 DeepSeek Harness 的 `packages/` 源码。`0.2.0-alpha.2` 适配 DSH `0.1.2-alpha.3`，不兼容已经移除 `dsh-client-runtime` 的更早插件构建。
 
 ## 1. 检查环境
 
-DSH 必须能够运行，`pnpm` 必须在 `PATH` 中。Label Studio 可以来自 Conda、pip／venv、Docker 或外部服务；插件本身不要求 Conda。仓库默认配置使用名为 `label-studio` 的 Conda 环境：
+### 1.1 安装 Node.js 和 pnpm
+
+Node.js 安装通常同时提供 `npm` 和 `npx`，但不保证已经安装 `pnpm`。本插件的安装命令由 DSH 调用 `pnpm` 修改 Profile，因此使用插件前必须确保 `pnpm` 命令可用。先检查现有环境：
+
+```sh
+node --version
+npm --version
+pnpm --version
+```
+
+如果找不到 `pnpm`，推荐使用 Node.js 自带的 `npm` 安装 DSH 当前要求的版本：
+
+```sh
+npm install --global pnpm@11.7.0
+pnpm --version
+```
+
+Node.js 通常自带的是 `npm` 和 `npx`；`pnpm` 是需要单独安装的包管理器。Corepack 不是本插件的运行条件，只要 `pnpm --version` 输出 `11.7.0`，后续命令就可以直接使用全局 `pnpm`。
+
+### 1.2 获取 DSH CLI
+
+DeepSeek Harness 源码仓库中的 `pnpm dsh` 是根 `package.json` 提供的开发脚本，只能从源码工作区运行；它不会把 `dsh` 可执行文件安装到系统 `PATH`。普通使用者不需要克隆 DSH 源码，官方的免安装运行方式是：
+
+```sh
+npx @deepseek-ai/dsh@0.1.2-alpha.3 web
+```
+
+选择全局安装与本插件兼容的 DSH 版本：
+
+```sh
+npm install --global @deepseek-ai/dsh@0.1.2-alpha.3
+dsh --version
+```
+
+全局安装后，`dsh web`、`dsh plugin ...` 等命令都可以在任意目录运行，但仍读取同一个 `$DSH_HOME`，默认是 `~/.dsh`。如果安装成功后终端仍报告找不到 `dsh`，请重新打开终端并确认 npm 的全局可执行文件目录已经加入 `PATH`。插件处于开发阶段时应使用本文明确列出的兼容版本，不要让 `npx` 或全局安装静默选择不兼容的更新版本。
+
+从 DSH 源码仓库开发时，继续使用仓库声明的 pnpm 版本：
+
+```sh
+pnpm dsh web
+```
+
+### 1.3 检查 Label Studio 环境
+
+DSH CLI、`pnpm` 和全局 Python 必须能够运行。默认启动模式要求 Label Studio 安装在这个 Python 中：
 
 ```sh
 node --version
 pnpm --version
-conda run -n label-studio label-studio --version
+python --version
+python -m pip install label-studio
+python -c "import label_studio; print(label_studio.__version__)"
 ```
 
-Windows venv 通常生成 `C:\\project\\.venv\\Scripts\\label-studio.exe`。使用该路径或其他外部服务的方法见第 3 节。
-
-只查看嵌入页面不需要 API 凭据。让模型读取任务、创建项目或创建 prediction 前，需要把 Label Studio Account 页面生成的完整 Personal Access Token refresh 值保存为 DSH 凭据 `LABEL_STUDIO_PAT`；不要把真实值写入插件目录、命令参数、聊天记录或 Git。
-
-DSH 默认从 `~/.dsh/.credentials.yaml` 读取受管凭据。文件是一个 YAML mapping，并且在 macOS/Linux 上必须只有当前用户可读写：
-
-```yaml
-LABEL_STUDIO_PAT: "在本机填写完整 refresh 值"
-```
-
-```sh
-chmod 600 ~/.dsh/.credentials.yaml
-```
+如果该命令名不是 `python`，或者要使用指定 Python 的绝对路径，请按第 3 节配置。Docker、系统服务或手工启动的 Label Studio 使用外部模式。
 
 ## 2. 安装插件
 
-从 GitHub 安装已经推送的版本：
+先停止正在运行的 DSH。学员取得课堂发放的 package 压缩包后，必须先完整解压到一个长期保留的目录；不能直接从压缩包预览窗口运行。把变量设为包含 `package.json`、`cordis.patch.yml` 和 `lib/` 的解压后插件根目录：
 
 ```sh
-dsh plugin --profile web add --workspace-root github:2a3b4c/DSH-label-studio
+LABEL_STUDIO_PLUGIN_PACKAGE=/absolute/path/to/dsh-label-studio-plugin-package
+npx @deepseek-ai/dsh@0.1.2-alpha.3 plugin --profile web add --workspace-root "$LABEL_STUDIO_PLUGIN_PACKAGE"
+```
+
+已经全局安装兼容版本 DSH 时，可以把命令缩短为：
+
+```sh
+LABEL_STUDIO_PLUGIN_PACKAGE=/absolute/path/to/dsh-label-studio-plugin-package
+dsh plugin --profile web add --workspace-root "$LABEL_STUDIO_PLUGIN_PACKAGE"
 ```
 
 从 DeepSeek Harness 源码仓库运行 CLI 时，写成：
 
 ```sh
-corepack pnpm dsh plugin --profile web add --workspace-root github:2a3b4c/DSH-label-studio
+LABEL_STUDIO_PLUGIN_PACKAGE=/absolute/path/to/dsh-label-studio-plugin-package
+pnpm dsh plugin --profile web add --workspace-root "$LABEL_STUDIO_PLUGIN_PACKAGE"
 ```
 
-开发者测试尚未推送的本地目录时，传独立插件仓库的绝对路径：
+Windows PowerShell 使用本地目录的绝对路径：
 
-```sh
-corepack pnpm dsh plugin --profile web add --workspace-root /Users/xinlongzhang/PycharmProjects/dsh-label-studio-plugin-package
+```powershell
+$LabelStudioPluginPackage = 'C:\path\to\dsh-label-studio-plugin-package'
+npx @deepseek-ai/dsh@0.1.2-alpha.3 plugin --profile web add --workspace-root $LabelStudioPluginPackage
 ```
 
-也可以安装预构建 tarball。先停止正在运行的 DSH，将变量设为收到的 `.tgz` 文件绝对路径：
+Windows CMD 使用 `set` 定义变量，并通过 `%变量名%` 读取：
 
-```sh
-LABEL_STUDIO_TARBALL=/absolute/path/to/dsh-label-studio-workbench-0.2.0-alpha.1.tgz
-dsh plugin --profile web add --workspace-root "$LABEL_STUDIO_TARBALL"
-```
-
-在 DeepSeek Harness 源码仓库中运行 CLI 时，使用仓库声明的 pnpm 版本：
-
-```sh
-LABEL_STUDIO_TARBALL=/absolute/path/to/dsh-label-studio-workbench-0.2.0-alpha.1.tgz
-corepack pnpm dsh plugin --profile web add --workspace-root "$LABEL_STUDIO_TARBALL"
-```
-
-`dsh plugin` 把后续参数转发给 Profile 目录内的 pnpm。`--workspace-root` 允许 pnpm 修改该 Profile 工作区的根 `package.json`，它不是 Bundle 配置字段。GitHub 安装使用仓库根 `package.json`，不依赖仓库中的 `dist/*.tgz`。
-
-安装成功时，输出包含 `dependencies: + dsh-label-studio-workbench`。下面的配置检查应显示 `# == dsh-label-studio-workbench`、disabled 的原 `ui-layout` 和新增的 `label-studio` 行，不应出现单独的 `client-ui-label-studio` 行：
-
-```sh
-dsh web --dump-config
-```
-
-源码方式使用：
-
-```sh
-corepack pnpm dsh web --dump-config
+```bat
+set "LABEL_STUDIO_PLUGIN_PACKAGE=C:\path\to\dsh-label-studio-plugin-package"
+npx @deepseek-ai/dsh@0.1.2-alpha.3 plugin --profile web add --workspace-root "%LABEL_STUDIO_PLUGIN_PACKAGE%"
 ```
 
 ## 3. 启动并检查页面
 
 ```sh
-dsh web
+npx @deepseek-ai/dsh@0.1.2-alpha.3 web
 ```
 
-源码方式使用 `corepack pnpm dsh web`。打开终端输出的地址，默认是 `http://127.0.0.1:3080`，然后检查：
+源码方式使用 `pnpm dsh web`；全局安装兼容版本 DSH 后也可以使用 `dsh web`。打开终端输出的地址，默认是 `http://127.0.0.1:3080`，然后检查：
 
 1. Session 顶部出现 `Label Studio` 入口。
 2. 打开入口后，右侧显示 Label Studio，左侧对话保持可用。
 3. sidebar、conversation、details、设置和主题切换保持可用。
 4. 配置 `LABEL_STUDIO_PAT` 后，`label_studio_*` 工具能够读取当前任务并执行写操作。
 
-插件默认连接 `http://127.0.0.1:8080`。该地址已有 Label Studio 时插件复用它；否则默认通过 `conda run -n label-studio` 启动并管理子进程。
+插件默认连接 `http://127.0.0.1:8080`。该地址已有健康的 Label Studio 时插件复用它；否则默认通过全局 `python` 运行 `python -m label_studio.server` 并管理子进程。
 
-Windows PowerShell 可直接运行 venv 控制台程序：
+Windows PowerShell 可以指定全局 Python 的绝对路径：
 
 ```powershell
-$env:DSH_LABEL_STUDIO_LAUNCH_MODE = 'executable'
-$env:DSH_LABEL_STUDIO_EXECUTABLE = 'C:\project\.venv\Scripts\label-studio.exe'
-dsh web
+$env:DSH_LABEL_STUDIO_PYTHON_EXECUTABLE = 'C:\Python313\python.exe'
+npx @deepseek-ai/dsh@0.1.2-alpha.3 web
 ```
 
-pip 生成的 `label-studio` 已位于 DSH 进程 `PATH` 时，只需把 mode 设为 `executable`。Label Studio 由 Docker、系统服务或手工命令启动时使用外部模式：
+macOS 或 Linux 的命令名是 `python3` 时，把 `DSH_LABEL_STUDIO_PYTHON_EXECUTABLE` 设为 `python3` 或其绝对路径。Label Studio 由 Docker、系统服务或手工命令启动时使用外部模式：
 
 ```sh
-DSH_LABEL_STUDIO_LAUNCH_MODE=external dsh web
+DSH_LABEL_STUDIO_LAUNCH_MODE=external npx @deepseek-ai/dsh@0.1.2-alpha.3 web
 ```
 
-环境变量必须在启动 DSH 的同一个终端中设置；源码运行方式仍在 `dsh` 前加 `corepack pnpm`。
+环境变量必须在启动 DSH 的同一个终端中设置；源码运行方式使用 `pnpm dsh web`。`external` 模式不会创建进程；配置地址的 `/health` 必须返回 `{"status":"UP"}`，否则插件加载失败。
 
-## 4. 更新插件
+## 4. 配置 LABEL_STUDIO_PAT
 
-停止 DSH，取得版本号更高的新 tarball，然后再次执行 `add`：
+只查看嵌入页面不需要 API 凭据。让模型读取任务、创建项目或创建 prediction 前，需要把 Label Studio Account 页面生成的完整 Personal Access Token refresh 值保存为 DSH 凭据 `LABEL_STUDIO_PAT`；不要把真实值写入插件目录、命令参数、聊天记录或 Git。
+
+先停止 DSH，在解压后的插件根目录执行同一条跨平台命令：
 
 ```sh
-NEW_LABEL_STUDIO_TARBALL=/absolute/path/to/dsh-label-studio-workbench-NEW_VERSION.tgz
-dsh plugin --profile web add --workspace-root "$NEW_LABEL_STUDIO_TARBALL"
-dsh web
+npm run configure-pat
 ```
 
-源码方式仍在命令前加 `corepack pnpm`。正式分发的每个构建都应提升版本号；只有调试同版本本地产物时才增加 pnpm 的 `--force` 参数。
+该命令适用于 Windows CMD、Windows PowerShell、macOS zsh 和 Linux bash。脚本会隐藏输入字符，只在内存中接收 PAT，然后新增或替换 `$DSH_HOME/.env` 中的 `LABEL_STUDIO_PAT`，保留文件里的其他变量；`DSH_HOME` 未设置时使用 Windows 的 `%USERPROFILE%\.dsh\.env` 或 macOS/Linux 的 `~/.dsh/.env`。脚本不会把 PAT 写入插件目录或打印到终端。
+
+看到“凭证已保存”后重新启动 DSH。环境文件在启动时读取，因此正在运行的 DSH 不会获得刚写入的值。如果 `$DSH_HOME/.credentials.yaml` 已经包含同名凭证，该文件的优先级高于 `.env`；课堂新环境不需要处理这种旧配置。
 
 ## 5. 卸载并恢复原布局
 
-停止 DSH，然后按 manifest 中的包名卸载，不要传 tarball 文件名：
+停止 DSH，然后按 manifest 中的包名卸载，不要传本地插件目录：
 
 ```sh
-dsh plugin --profile web remove --workspace-root dsh-label-studio-workbench
-dsh web --dump-config
-dsh web
+npx @deepseek-ai/dsh@0.1.2-alpha.3 plugin --profile web remove --workspace-root dsh-label-studio-workbench
+npx @deepseek-ai/dsh@0.1.2-alpha.3 web --dump-config
+npx @deepseek-ai/dsh@0.1.2-alpha.3 web
 ```
 
-卸载成功后，Profile 不再包含 `dsh-label-studio-workbench`，原 `ui-layout` 恢复启用，Label Studio 入口和工具消失。关闭右侧面板只会隐藏 iframe，不等于卸载插件。
-
-## 6. 独立包如何生成
-
-独立包不是第四套源码。维护者先在 `deepseek-harness` 中编译三个源码包：Host `packages/extensions/label-studio`、浏览器 Client `packages/client/ui-label-studio` 和共享协议 `packages/util/label-studio-protocol`。然后把三者的 `lib/` 与 `.d.ts` 汇集到本目录，执行两项机械转换：浏览器模块 id 改为顶层包名 `dsh-label-studio-workbench`；Host 和 Client 声明中的协议引用改为顶层导出 `dsh-label-studio-workbench/protocol`。
-
-本目录的 `package.json` 是最终分发 manifest：`dsh.bundle.patch` 指向 `cordis.patch.yml`，`dsh.client` 声明同一个包也提供浏览器模块，`exports` 暴露 Host、Client、协议和 patch。完成构建产物汇集、版本更新和 manifest 检查后，在本目录执行：
-
-```sh
-corepack pnpm pack --pack-destination ./dist
-```
-
-将新生成的 `.tgz` 交给使用者即可。tarball 是 npm 发布文件集合的快照；GitHub 安装则直接读取仓库根文件。两种方式都使用已经提交的 Host、Client 和协议产物，安装时不执行 TypeScript 构建脚本。
+卸载成功后，Profile 不再包含 `dsh-label-studio-workbench`，原 `ui-layout` 恢复启用，Label Studio 入口和工具消失。关闭右侧面板只会隐藏标注界面，不等于卸载插件。
 
 ## 常见错误
 
 | 第一条具体错误 | 处理方法 |
 |---|---|
 | `ERR_PNPM_ADDING_TO_ROOT` | 安装或卸载命令缺少 `--workspace-root`。 |
-| `client-modules: require("@deepseek-ai/dsh-client-runtime/client") missed the module table` | 安装了适配旧 DSH 的插件；升级到 `0.2.0-alpha.1` 或更新版本。 |
+| `client-modules: require("@deepseek-ai/dsh-client-runtime/client") missed the module table` | 安装了适配旧 DSH 的插件；升级到 `0.2.0-alpha.2` 或更新版本。 |
 | `LABEL_STUDIO_PAT is not configured` | 页面仍可使用，但 REST 工具不可认证；在 DSH 凭据系统中配置完整 refresh 值。 |
 | `EADDRINUSE` | 明确停止占用 3080 或 8080 的旧进程后重试。 |
-| `Conda environment ... not found` | 确认 `conda run -n label-studio label-studio --version` 成功。 |
-| Windows 找不到 `label-studio` | 使用 `executable` 模式，并把 `DSH_LABEL_STUDIO_EXECUTABLE` 设为 venv 中 `.exe` 的绝对路径。 |
+| 找不到 `python` | 把 `DSH_LABEL_STUDIO_PYTHON_EXECUTABLE` 设为全局 Python 命令或绝对路径。 |
+| `No module named label_studio` | 使用该 Python 执行 `python -m pip install label-studio`。 |
+| `external service is unavailable` | 先启动 Label Studio，并确认配置地址的 `/health` 返回 `{"status":"UP"}`。 |
 | `ELIFECYCLE Command failed with exit code 1` | 这只是 pnpm 汇总；向上查找并处理第一条具体错误。 |

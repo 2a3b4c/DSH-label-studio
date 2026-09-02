@@ -3,13 +3,11 @@ import z from '@deepseek-ai/schemastery';
 import { type CredentialRef } from '@deepseek-ai/dsh-credentials';
 export { DEFAULT_LABEL_STUDIO_BASE_URL } from './shared.ts';
 /** Supported ownership policy for an unavailable Label Studio endpoint. */
-export type LabelStudioLaunchMode = 'conda' | 'executable' | 'external';
-/** Default launcher retained by the repository's local development Bundle. */
+export type LabelStudioLaunchMode = 'python' | 'external';
+/** Default launcher used by the installable Bundle and repository example. */
 export declare const DEFAULT_LABEL_STUDIO_LAUNCH_MODE: LabelStudioLaunchMode;
-/** Default Conda environment requested by the local launcher. */
-export declare const DEFAULT_CONDA_ENVIRONMENT = "label-studio";
-/** Default Label Studio console script resolved by the direct launcher. */
-export declare const DEFAULT_LABEL_STUDIO_EXECUTABLE = "label-studio";
+/** Default global Python command resolved by the subprocess provider. */
+export declare const DEFAULT_PYTHON_EXECUTABLE = "python";
 /** Default PAT refresh-token credential reference for authenticated REST operations. */
 export declare const DEFAULT_REFRESH_TOKEN_CREDENTIAL = "LABEL_STUDIO_PAT";
 /** Default maximum decoded byte length of one Label Studio REST response. */
@@ -38,12 +36,8 @@ export interface Config {
     baseUrl?: string;
     /** Launcher used when the endpoint is unavailable; external mode never spawns. */
     launchMode?: LabelStudioLaunchMode;
-    /** Bare or absolute Conda executable resolved by the subprocess provider. */
-    condaExecutable?: string;
-    /** Conda environment containing the `label-studio` command. */
-    condaEnvironment?: string;
-    /** Bare or absolute Label Studio console executable used in executable mode. */
-    labelStudioExecutable?: string;
+    /** Bare or absolute Python executable whose environment contains Label Studio. */
+    pythonExecutable?: string;
     /** PAT refresh-token credential reference resolved for every authenticated REST operation. */
     refreshTokenCredential?: string;
     /** Positive readiness deadline after spawning Label Studio. */
@@ -73,9 +67,7 @@ export declare const Config: z<Config>;
 export interface ResolvedConfig {
     baseUrl: string;
     launchMode: LabelStudioLaunchMode;
-    condaExecutable: string;
-    condaEnvironment: string;
-    labelStudioExecutable: string;
+    pythonExecutable: string;
     refreshTokenCredential: CredentialRef;
     startupTimeoutMs: number;
     shutdownGraceMs: number;

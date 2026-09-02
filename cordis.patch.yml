@@ -8,10 +8,8 @@
       name: 'dsh-label-studio-workbench'
       config:
         baseUrl: !!js process.env.DSH_LABEL_STUDIO_BASE_URL ?? 'http://127.0.0.1:8080'
-        launchMode: !!js process.env.DSH_LABEL_STUDIO_LAUNCH_MODE ?? 'conda'
-        condaExecutable: !!js process.env.DSH_LABEL_STUDIO_CONDA_EXECUTABLE ?? 'conda'
-        condaEnvironment: !!js process.env.DSH_LABEL_STUDIO_CONDA_ENVIRONMENT ?? 'label-studio'
-        labelStudioExecutable: !!js process.env.DSH_LABEL_STUDIO_EXECUTABLE ?? 'label-studio'
+        launchMode: !!js process.env.DSH_LABEL_STUDIO_LAUNCH_MODE ?? 'python'
+        pythonExecutable: !!js process.env.DSH_LABEL_STUDIO_PYTHON_EXECUTABLE ?? 'python'
         refreshTokenCredential: LABEL_STUDIO_PAT
         startupTimeoutMs: 120000
         shutdownGraceMs: 5000

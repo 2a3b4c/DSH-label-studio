@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-面向 DSH Web 界面的可安装 Label Studio Bundle。仓库根包同时包含 Host 运行时、浏览器 Client、共享协议声明，以及用兼容布局和右侧 Label Studio iframe 替换 Web 根组件的 patch。`0.2.0-alpha.1` 适配 DSH `0.1.2-alpha.3`。
+面向 DSH Web 界面的可安装 Label Studio Bundle。仓库根包同时包含 Host 运行时、浏览器 Client、共享协议声明，以及用兼容布局和右侧 Label Studio iframe 替换 Web 根组件的 patch。`0.2.0-alpha.2` 适配 DSH `0.1.2-alpha.3`。
 
 ## 装配
 
@@ -20,20 +20,21 @@
 安装和卸载命令见 [`INSTALL.zh.md`](INSTALL.zh.md)。安装后的 Bundle patch 会自动参与 Web Profile 装配，无需修改 DSH 源码：
 
 ```sh
-dsh plugin --profile web add --workspace-root github:2a3b4c/DSH-label-studio
+LABEL_STUDIO_PLUGIN_PACKAGE=/absolute/path/to/dsh-label-studio-plugin-package
+npx @deepseek-ai/dsh@0.1.2-alpha.3 plugin --profile web add --workspace-root "$LABEL_STUDIO_PLUGIN_PACKAGE"
 ```
 
-插件先检查配置的 `/health` 端点。服务健康时直接复用，并且不会在退出时停止它。端点不可用时按 `launchMode` 处理：`conda` 不依赖 shell 激活状态，直接运行指定环境；`executable` 直接运行 Label Studio 控制台程序；`external` 把进程启动交给用户。插件会在 `startupTimeoutMs` 内等待就绪，并且只终止自己创建的进程树。
+课堂上发放普通 package 压缩包；学员必须先完整解压，再把解压后插件根目录的绝对路径传给安装命令。本地目录安装会在 Profile 中保存 `link:` 依赖，因此安装后必须保留该插件目录。
+
+插件先检查配置的 `/health` 端点。服务健康时直接复用，并且不会在退出时停止它。端点不可用时，`python` 模式通过配置的全局 Python 可执行文件运行 Label Studio，`external` 模式则让启动失败并由操作者管理进程。插件会在 `startupTimeoutMs` 内等待自己启动的进程就绪，并且只终止该进程树。
 
 ## 配置
 
 | 字段 | 默认值 | 含义 |
 |---|---:|---|
 | `baseUrl` | `http://127.0.0.1:8080` | iframe 和 REST 客户端使用的 loopback HTTP(S) 端点。包含凭据、查询串、片段或非 loopback 主机时会被拒绝。 |
-| `launchMode` | `conda` | 健康检查失败时采用的行为：`conda`、`executable` 或 `external`。 |
-| `condaExecutable` | `conda` | 由 `ctx.subprocess` 解析的 Conda 命令名或绝对路径。 |
-| `condaEnvironment` | `label-studio` | 包含 `label-studio` 命令的 Conda 环境。 |
-| `labelStudioExecutable` | `label-studio` | `executable` 模式使用的命令名或绝对路径，包括 Windows 虚拟环境中的 `.exe`。 |
+| `launchMode` | `python` | 健康检查失败时通过 `python` 启动，或要求已经健康的 `external` 服务。 |
+| `pythonExecutable` | `python` | 所在环境已经安装 `label-studio` 包的全局 Python 命令名或绝对路径。 |
 | `refreshTokenCredential` | `LABEL_STUDIO_PAT` | Label Studio 完整 Personal Access Token refresh 值的凭据引用；每次认证 REST 操作都通过 `ctx.credentials` 解析。`apiKeyEnv` 是非法字段，会被明确拒绝。 |
 | `startupTimeoutMs` | `120000` | 正数就绪期限；首次数据库迁移也在该时段内执行。 |
 | `shutdownGraceMs` | `5000` | 终止本插件所启动进程时，从 TERM 到 KILL 的正数宽限时间。 |
@@ -48,9 +49,9 @@ dsh plugin --profile web add --workspace-root github:2a3b4c/DSH-label-studio
 
 配置只接受表中字段；未知字段会在插件配置阶段失败，不会被静默忽略。`allowDirectAnnotationUpdate` 会被明确拒绝，因为 controlled-task V1 的模型写入路径只有 prediction 创建。
 
-Bundle patch 会在 DSH 启动前读取 `DSH_LABEL_STUDIO_LAUNCH_MODE`、`DSH_LABEL_STUDIO_EXECUTABLE`、`DSH_LABEL_STUDIO_CONDA_EXECUTABLE` 和 `DSH_LABEL_STUDIO_CONDA_ENVIRONMENT`。Windows 虚拟环境可选择 `executable` 模式，并让 `DSH_LABEL_STUDIO_EXECUTABLE` 指向 `.venv\\Scripts\\label-studio.exe`；如果 pip 安装生成的 `label-studio` 命令已经位于 DSH 进程的 `PATH`，则可沿用直接模式的默认命令。Docker、系统服务或手工启动的服务使用 `external` 模式。Python 是 Label Studio 的运行依赖，不是 TypeScript 插件本身的依赖。
+Bundle patch 会在 DSH 启动前读取 `DSH_LABEL_STUDIO_LAUNCH_MODE` 和 `DSH_LABEL_STUDIO_PYTHON_EXECUTABLE`。Python 模式会解析这个可执行文件并运行 `python -m label_studio.server`；使用 `python -m pip install label-studio` 把 Label Studio 安装到同一个全局 Python 中。如果目标命令不叫 `python`，例如部分系统中的 `python3`，应配置其绝对路径。Docker、系统服务或手工启动的服务使用 `external` 模式，并且必须在插件加载前让配置的 `/health` 端点返回 `{"status":"UP"}`。Python 和 Label Studio 是运行依赖，不是 TypeScript 包的依赖。
 
-配置中只保存凭据引用。请在 Label Studio 的 Account 页面创建 Personal Access Token，在完整 refresh token 显示时立即复制，并保存到对应 DSH 凭据中。Label Studio 数据库只保留截断且不含签名的表示，因此之后无法从 `label_studio.sqlite3` 恢复完整值。每次认证操作都会重新解析引用、在 `/api/token/refresh/` 交换 refresh token，并以返回的 access token 进行 `Bearer` 认证；插件不会跨操作缓存任一种 token。refresh 和业务响应都按解码后的数据流计数，超过 `restResponseMaxBytes` 就拒绝；错误只保留固定的操作、路径和状态信息，不包含任何 token 或响应正文。业务变更在 dispatch 前发现取消时不会写入；一旦 dispatch，传输失败、取消或无效成功响应都会报告提交状态未知，并且绝不自动重试。
+配置中只保存凭据引用。请在 Label Studio 的 Account 页面创建 Personal Access Token，在完整 refresh token 显示时立即复制，然后在解压后的插件根目录运行 `npm run configure-pat`。这个跨平台脚本隐藏输入并新增或替换 `$DSH_HOME/.env` 中的 `LABEL_STUDIO_PAT`，不修改插件目录中的环境文件；详细步骤见 [`INSTALL.zh.md`](INSTALL.zh.md)。Label Studio 数据库只保留截断且不含签名的表示，因此之后无法从 `label_studio.sqlite3` 恢复完整值。每次认证操作都会重新解析引用、在 `/api/token/refresh/` 交换 refresh token，并以返回的 access token 进行 `Bearer` 认证；插件不会跨操作缓存任一种 token。refresh 和业务响应都按解码后的数据流计数，超过 `restResponseMaxBytes` 就拒绝；错误只保留固定的操作、路径和状态信息，不包含任何 token 或响应正文。业务变更在 dispatch 前发现取消时不会写入；一旦 dispatch，传输失败、取消或无效成功响应都会报告提交状态未知，并且绝不自动重试。
 
 ## 工具
 
