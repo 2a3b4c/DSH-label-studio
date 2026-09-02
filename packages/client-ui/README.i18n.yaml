@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/ui-label-studio/README.md
-README.md: 80d141c7de34e78478cc99237df4e456b160ca76
-README.zh.md: cbe13afcf74ff84010a8d60f364f48b26b73e4fd
+README.md: 2c83575bfaa69d45f98fc37a637a548fd9c8acc5
+README.zh.md: 8bbfba5c06e5da44a1071d2e7a1020219643b664

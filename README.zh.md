@@ -67,7 +67,7 @@ Bundle patch 会在 DSH 启动前读取 `DSH_LABEL_STUDIO_LAUNCH_MODE` 和 `DSH_
 
 ## 浏览器行为
 
-浏览器包向 `conversation.session.header.actions` 注册可叠加操作，并在该 Bundle 生效期间提供唯一活动的 `root` occupant。这个根组件保留原 sidebar、conversation、details 和 overlay 四个 slot，并直接渲染工作台，不新增公共 workbench slot。第一次打开前不存在 iframe；关闭后 iframe 仍保留在 hidden、inert 的区域中。重新加载只替换 iframe，**在新窗口打开**使用同一个配置端点，关闭工作台不会中断对话或停止 Label Studio 服务。
+浏览器包向 `conversation.session.header.actions` 注册可叠加操作，并在该 Bundle 生效期间提供唯一活动的 `root` occupant。这个根组件保留原 sidebar、conversation、details 和 overlay 四个 slot，并直接渲染工作台，不新增公共 workbench slot。第一次打开前不存在 iframe；关闭后 iframe 仍保留在 hidden、inert 的区域中。工作台标题栏的全屏按钮让 Label Studio 覆盖整个 DSH 页面，再次点击或按 `Esc` 恢复原布局；关闭工作台也会退出全屏。重新加载只替换 iframe，**在新窗口打开**使用同一个配置端点，关闭工作台不会中断对话或停止 Label Studio 服务。
 
 实际检查确认 Label Studio 1.22.0 的登录页不发送 `X-Frame-Options`，也没有强制执行 `frame-ancestors`。如果其他 Label Studio 部署添加了这类限制，就必须允许 DSH Web origin，或改用新窗口入口。
 

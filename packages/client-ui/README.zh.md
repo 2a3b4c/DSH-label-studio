@@ -6,7 +6,7 @@ Label Studio Bundle 的浏览器包。它替换 Web 的 `root` occupant，同时
 
 该包提供原 sidebar 和 conversation 插件使用的同一组公共 `ctx.layout` 方法：`toggleSidebar()`、`openDetails()` 和 `closeDetails()`。工作台开关只属于包内部；该包不会注册公共工作台 slot，也不会扩展公共布局接口。
 
-工作台 iframe 采用延迟挂载和关闭保活。第一次打开前不会创建 iframe；第一次打开后，关闭只会把承载区域设为 hidden 和 inert，iframe 仍保持挂载，因此再次打开不会重新加载 Label Studio 页面。替代根保留四个原 slot 的固定渲染位置，并且只在一个非 blank 的 live Session 切换到另一个非 blank 的 live Session 时关闭 details。
+工作台 iframe 采用延迟挂载和关闭保活。第一次打开前不会创建 iframe；第一次打开后，关闭只会把承载区域设为 hidden 和 inert，iframe 仍保持挂载，因此再次打开不会重新加载 Label Studio 页面。标题栏的全屏按钮让工作台覆盖整个 DSH 页面；再次点击、按 `Esc` 或关闭工作台都会恢复原布局。替代根保留四个原 slot 的固定渲染位置，并且只在一个非 blank 的 live Session 切换到另一个非 blank 的 live Session 时关闭 details。
 
 替代根在 React commit 后把当前选中的 DSH Session 绑定到浏览器 source 租约。顶部 target 控件接受正整数 project id、task id 和可选 annotation id，通过固定的 `/label-studio` Connection 通道预留单调递增的导航 revision，把 `/projects/{projectId}/data?task={taskId}` 应用到 iframe，并且只在 React 提交该 URL 后发布。Host `label_studio_focus_task` 请求使用同一个串行队列，也只在 iframe URL 提交后确认。
 

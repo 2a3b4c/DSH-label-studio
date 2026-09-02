@@ -5,6 +5,8 @@ export declare const zh: {
     readonly 'action.open': "打开 Label Studio";
     readonly 'action.close': "关闭 Label Studio";
     readonly 'panel.title': "Label Studio 标注工作台";
+    readonly 'panel.fullscreen': "全屏标注";
+    readonly 'panel.exitFullscreen': "退出全屏";
     readonly 'panel.reload': "重新加载";
     readonly 'panel.external': "在新窗口打开";
     readonly 'panel.close': "关闭工作台";

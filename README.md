@@ -67,7 +67,7 @@ The model receives numeric project, task, and prediction ids as canonical JSON v
 
 ## Browser behavior
 
-The browser package registers an additive action in `conversation.session.header.actions` and supplies the only active `root` occupant while this Bundle is present. That root preserves the original sidebar, conversation, details, and overlay slots and renders the workbench directly; it does not add a public workbench slot. The iframe is absent before first open and remains mounted inside a hidden, inert section after close. Reload replaces only the iframe, **Open in a new window** uses the configured endpoint, and closing the workbench leaves both the conversation and Label Studio server running.
+The browser package registers an additive action in `conversation.session.header.actions` and supplies the only active `root` occupant while this Bundle is present. That root preserves the original sidebar, conversation, details, and overlay slots and renders the workbench directly; it does not add a public workbench slot. The iframe is absent before first open and remains mounted inside a hidden, inert section after close. The workbench header's fullscreen control overlays Label Studio across the DSH page; selecting it again, pressing `Escape`, or closing the workbench restores the docked layout. Reload replaces only the iframe, **Open in a new window** uses the configured endpoint, and closing the workbench leaves both the conversation and Label Studio server running.
 
 Label Studio 1.22.0 was verified to serve its login page without `X-Frame-Options` or an enforced `frame-ancestors` directive. A different Label Studio deployment that adds either restriction must allow the DSH Web origin or use the new-window control.
 

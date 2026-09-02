@@ -1187,6 +1187,8 @@ window.__ModuleLoader__.load({
 			"action.open": "打开 Label Studio",
 			"action.close": "关闭 Label Studio",
 			"panel.title": "Label Studio 标注工作台",
+			"panel.fullscreen": "全屏标注",
+			"panel.exitFullscreen": "退出全屏",
 			"panel.reload": "重新加载",
 			"panel.external": "在新窗口打开",
 			"panel.close": "关闭工作台",
@@ -1210,6 +1212,8 @@ window.__ModuleLoader__.load({
 			"action.open": "Open Label Studio",
 			"action.close": "Close Label Studio",
 			"panel.title": "Label Studio annotation workbench",
+			"panel.fullscreen": "Enter fullscreen",
+			"panel.exitFullscreen": "Exit fullscreen",
 			"panel.reload": "Reload",
 			"panel.external": "Open in a new window",
 			"panel.close": "Close workbench",
@@ -1230,7 +1234,7 @@ window.__ModuleLoader__.load({
 		};
 		//#endregion
 		//#region \0dsh-css:LabelStudioPanel.module.css.mjs
-		const css$1 = ".LwyFZG_panel{box-sizing:border-box;border-left:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);flex-direction:column;min-width:0;height:100%;display:flex;overflow:hidden}.LwyFZG_panel[hidden]{display:none}.LwyFZG_header{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);flex:none;justify-content:space-between;align-items:center;gap:12px;min-height:44px;padding:0 10px 0 14px;display:flex}.LwyFZG_title{color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;overflow:hidden}.LwyFZG_actions{flex:none;gap:2px;display:flex}.LwyFZG_targetBar{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);grid-template-columns:minmax(64px,.8fr) minmax(64px,.8fr) minmax(64px,.8fr) auto minmax(96px,1.4fr);gap:6px;padding:8px 10px;display:grid}.LwyFZG_targetBar input,.LwyFZG_targetBar button{box-sizing:border-box;min-width:0;height:28px}.LwyFZG_targetBar output{color:var(--dsw-alias-label-secondary);text-overflow:ellipsis;white-space:nowrap;align-self:center;font-size:11px;overflow:hidden}.LwyFZG_iconButton{width:30px;height:30px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;border-radius:8px;place-items:center;padding:0;display:grid}.LwyFZG_iconButton:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.LwyFZG_iframe{background:var(--dsw-alias-bg-base);border:0;flex:1;width:100%;min-height:0}";
+		const css$1 = ".LwyFZG_panel{box-sizing:border-box;border-left:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);flex-direction:column;min-width:0;height:100%;display:flex;overflow:hidden}.LwyFZG_panel[hidden]{display:none}.LwyFZG_panel[data-fullscreen]{z-index:100;position:fixed;inset:0;width:100%!important;height:100dvh;border-left:0}.LwyFZG_header{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);flex:none;justify-content:space-between;align-items:center;gap:12px;min-height:44px;padding:0 10px 0 14px;display:flex}.LwyFZG_title{color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;overflow:hidden}.LwyFZG_actions{flex:none;gap:2px;display:flex}.LwyFZG_targetBar{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);grid-template-columns:minmax(64px,.8fr) minmax(64px,.8fr) minmax(64px,.8fr) auto minmax(96px,1.4fr);gap:6px;padding:8px 10px;display:grid}.LwyFZG_targetBar input,.LwyFZG_targetBar button{box-sizing:border-box;min-width:0;height:28px}.LwyFZG_targetBar output{color:var(--dsw-alias-label-secondary);text-overflow:ellipsis;white-space:nowrap;align-self:center;font-size:11px;overflow:hidden}.LwyFZG_iconButton{width:30px;height:30px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;border-radius:8px;place-items:center;padding:0;display:grid}.LwyFZG_iconButton:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.LwyFZG_iframe{background:var(--dsw-alias-bg-base);border:0;flex:1;width:100%;min-height:0}";
 		const tagId$1 = "dsh-label-studio-workbench/LabelStudioPanel.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -1258,6 +1262,21 @@ window.__ModuleLoader__.load({
 			const [taskId, setTaskId] = (0, react.useState)("");
 			const [annotationId, setAnnotationId] = (0, react.useState)("");
 			const [inputError, setInputError] = (0, react.useState)();
+			const [fullscreen, setFullscreen] = (0, react.useState)(false);
+			(0, react.useEffect)(() => {
+				if (!open && fullscreen) setFullscreen(false);
+			}, [fullscreen, open]);
+			(0, react.useEffect)(() => {
+				if (!fullscreen) return;
+				const onKeyDown = (event) => {
+					if (event.key !== "Escape") return;
+					setFullscreen(false);
+				};
+				window.addEventListener("keydown", onKeyDown);
+				return () => {
+					window.removeEventListener("keydown", onKeyDown);
+				};
+			}, [fullscreen]);
 			(0, react.useLayoutEffect)(() => {
 				if (state.targetUrl !== void 0) confirmApplied(state.navigationRevision);
 			}, [
@@ -1272,6 +1291,7 @@ window.__ModuleLoader__.load({
 				"aria-label": t("panel.title"),
 				hidden: !open,
 				...!open ? { inert: "" } : {},
+				"data-fullscreen": fullscreen || void 0,
 				style: { width },
 				children: [
 					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("header", {
@@ -1282,6 +1302,37 @@ window.__ModuleLoader__.load({
 						}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 							className: LabelStudioPanel_module_css_default.actions,
 							children: [
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+									type: "button",
+									className: LabelStudioPanel_module_css_default.iconButton,
+									"aria-label": t(fullscreen ? "panel.exitFullscreen" : "panel.fullscreen"),
+									"aria-pressed": fullscreen,
+									title: t(fullscreen ? "panel.exitFullscreen" : "panel.fullscreen"),
+									onClick: () => {
+										setFullscreen((current) => !current);
+									},
+									children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("svg", {
+										viewBox: "0 0 20 20",
+										width: "16",
+										height: "16",
+										"aria-hidden": true,
+										children: fullscreen ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
+											d: "M8 4v4H4M12 4v4h4M8 16v-4H4M12 16v-4h4",
+											fill: "none",
+											stroke: "currentColor",
+											strokeWidth: "1.5",
+											strokeLinecap: "round",
+											strokeLinejoin: "round"
+										}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
+											d: "M8 4H4v4M12 4h4v4M8 16H4v-4M12 16h4v-4",
+											fill: "none",
+											stroke: "currentColor",
+											strokeWidth: "1.5",
+											strokeLinecap: "round",
+											strokeLinejoin: "round"
+										})
+									})
+								}),
 								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 									type: "button",
 									className: LabelStudioPanel_module_css_default.iconButton,
