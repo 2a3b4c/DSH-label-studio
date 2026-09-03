@@ -6,11 +6,11 @@ Type-only declarations shared by the Label Studio Host and browser plugins. The 
 
 ## Published declarations
 
-The main entry exports branded project, task, annotation, prediction, source, lease, correlation, and navigation-sequence types. It also exports the active target, lease snapshot, reservation, target-state, browser-event, event-batch, RPC request/result map, nested outcome, and sanitized error declarations used by the controlled-task channel. `SessionId` is imported from the client-safe `@deepseek-ai/dsh-session/types` entry.
+The main entry exports branded project, task, annotation, prediction, source, lease, correlation, and navigation-sequence types. It also exports the general page context, recent-project metadata, durable Session-context snapshot, active target, lease snapshot, reservation, target-state, browser-event, event-batch, RPC request/result map, nested outcome, and sanitized error declarations used by the controlled-task channel. `SessionId` is imported from the client-safe `@deepseek-ai/dsh-session/types` entry.
 
 The main entry has no runtime values. Host and browser consumers own their JSON parsers and construct branded values only after validating the corresponding wire fields. The package's separate invariant companion only reserves package ownership with the runtime invariant registry.
 
-The Connection transport owns its outer `RpcResult`; `LabelStudioRpcOutcome` is the inner business result. This separation keeps plugin error codes out of Connection's closed framework error set. The declarations contain identifiers, revisions, lease state, and change reasons only; they do not define fields for credentials, tokens, sample data, or annotation results.
+The Connection transport owns its outer `RpcResult`; `LabelStudioRpcOutcome` is the inner business result. This separation keeps plugin error codes out of Connection's closed framework error set. `lease/open` returns the durable page snapshot, while `page/commit` uses compare-and-swap revision fields to update it. The declarations contain identifiers, timestamps, availability, revisions, lease state, and change reasons only; they do not define fields for credentials, tokens, sample data, or annotation results.
 
 ## Model Experience
 

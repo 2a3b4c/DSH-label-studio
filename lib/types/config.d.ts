@@ -30,6 +30,8 @@ export declare const DEFAULT_EVENT_HISTORY_SIZE = 64;
 export declare const DEFAULT_CONTEXT_OPEN_RETRY_MS = 1000;
 /** Default abort deadline for best-effort browser lease closure. */
 export declare const DEFAULT_CONTEXT_CLOSE_TIMEOUT_MS = 1000;
+/** Default number of recently visited projects retained for each Session. */
+export declare const DEFAULT_RECENT_PROJECT_LIMIT = 10;
 /** User-configurable Label Studio plugin fields. */
 export interface Config {
     /** Loopback HTTP(S) endpoint rendered in the browser and used by REST tools. */
@@ -60,6 +62,8 @@ export interface Config {
     contextOpenRetryMs?: number;
     /** Positive safe-integer limit for best-effort browser lease closure. */
     contextCloseTimeoutMs?: number;
+    /** Maximum recently visited Label Studio projects retained for each Session. */
+    recentProjectLimit?: number;
 }
 /** Schemastery projection used by Cordis loaders and configuration UIs. */
 export declare const Config: z<Config>;
@@ -79,6 +83,7 @@ export interface ResolvedConfig {
     eventHistorySize: number;
     contextOpenRetryMs: number;
     contextCloseTimeoutMs: number;
+    recentProjectLimit: number;
 }
 /**
  * Resolve every launcher and API default at the package boundary.

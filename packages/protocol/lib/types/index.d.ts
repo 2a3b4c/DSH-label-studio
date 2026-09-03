@@ -43,6 +43,61 @@ export interface LabelStudioActiveTargetWire {
     readonly taskId: number;
     readonly annotationId?: number;
 }
+/** Durable Label Studio page selected by one DSH Session. */
+export type LabelStudioPageContext = {
+    readonly view: 'projects';
+} | {
+    readonly view: 'project';
+    readonly projectId: LabelStudioProjectId;
+} | {
+    readonly view: 'task';
+    readonly projectId: LabelStudioProjectId;
+    readonly taskId: LabelStudioTaskId;
+    readonly annotationId?: LabelStudioAnnotationId;
+};
+/** JSON representation of a durable Label Studio page. */
+export type LabelStudioPageContextWire = {
+    readonly view: 'projects';
+} | {
+    readonly view: 'project';
+    readonly projectId: number;
+} | {
+    readonly view: 'task';
+    readonly projectId: number;
+    readonly taskId: number;
+    readonly annotationId?: number;
+};
+/** Whether a recently visited Label Studio project still exists. */
+export type LabelStudioProjectAvailability = 'available' | 'deleted';
+/** Most recently visited state retained for one Label Studio project. */
+export interface LabelStudioRecentProject {
+    readonly projectId: LabelStudioProjectId;
+    readonly lastTaskId?: LabelStudioTaskId;
+    readonly lastVisitedAt: number;
+    readonly availability: LabelStudioProjectAvailability;
+}
+/** Durable Label Studio navigation state projected for one DSH Session. */
+export interface LabelStudioSessionContextSnapshot {
+    readonly page: LabelStudioPageContext;
+    readonly recentProjects: readonly LabelStudioRecentProject[];
+    readonly revision: number;
+}
+/** Browser request to commit a Label Studio page for its current Session lease. */
+export interface LabelStudioPageCommitRequest {
+    readonly leaseId: string;
+    readonly generation: number;
+    readonly navigationSequence: number;
+    readonly expectedSessionContextRevision: number;
+    readonly page: LabelStudioPageContextWire;
+}
+/** Validated Host representation of a Label Studio page commit. */
+export interface LabelStudioPageCommit {
+    readonly leaseId: LabelStudioContextLeaseId;
+    readonly generation: number;
+    readonly navigationSequence: LabelStudioNavigationSequence;
+    readonly expectedSessionContextRevision: number;
+    readonly page: LabelStudioPageContext;
+}
 /** Current lease identity and server expiry. */
 export interface LabelStudioLeaseSnapshot {
     readonly leaseId: LabelStudioContextLeaseId;
@@ -53,6 +108,7 @@ export interface LabelStudioLeaseSnapshot {
 export interface LabelStudioLeaseOpenResult {
     readonly lease: LabelStudioLeaseSnapshot;
     readonly replayBaseline: number;
+    readonly sessionContext: LabelStudioSessionContextSnapshot;
 }
 /** Reservation issued before the controlled browser publishes a target. */
 export interface LabelStudioTargetReservation {
@@ -98,6 +154,7 @@ export type LabelStudioBrowserEvent = {
     readonly correlationId: LabelStudioFocusCorrelationId;
     readonly targetRevision: number;
     readonly target: LabelStudioActiveTarget;
+    readonly expectedSessionContextRevision: number;
     readonly deadlineAt: number;
     readonly committed: boolean;
 } | {
@@ -148,6 +205,7 @@ export interface LabelStudioRpcRequestMap {
         readonly targetRevision: number;
         readonly target: LabelStudioActiveTargetWire;
     };
+    readonly 'page/commit': LabelStudioPageCommitRequest;
 }
 /** Successful result values owned by each Label Studio endpoint. */
 export interface LabelStudioRpcResultMap {
@@ -159,9 +217,12 @@ export interface LabelStudioRpcResultMap {
     readonly 'context/publish': LabelStudioActiveContext;
     readonly 'events/wait': LabelStudioEventBatch;
     readonly 'focus/ack': LabelStudioActiveContext;
+    readonly 'page/commit': LabelStudioSessionContextSnapshot;
 }
+/** Stable durable Session-context failures returned by Label Studio RPC. */
+export type LabelStudioSessionContextErrorCode = 'session-context-conflict' | 'session-context-unavailable';
 /** Stable Label Studio failures nested inside the transport RPC result. */
-export type LabelStudioRpcErrorCode = 'invalid-request' | 'session-not-found' | 'lease-conflict' | 'lease-expired' | 'stale-generation' | 'stale-revision' | 'future-revision' | 'focus-conflict' | 'focus-not-found';
+export type LabelStudioRpcErrorCode = 'invalid-request' | 'session-not-found' | 'lease-conflict' | 'lease-expired' | 'stale-generation' | 'stale-revision' | 'future-revision' | 'focus-conflict' | 'focus-not-found' | LabelStudioSessionContextErrorCode;
 /** Sanitized plugin error returned without request or response bodies. */
 export type LabelStudioRpcError = {
     readonly code: 'lease-conflict';

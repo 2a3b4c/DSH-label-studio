@@ -1,0 +1,24 @@
+# Source-only alpha.3 acceptance overlay. The published installation uses the
+# package root cordis.patch.yml instead.
+- id: ui-layout
+  disabled: true
+
+- insert:
+    - id: label-studio
+      name: '../../src/index.ts'
+      config:
+        baseUrl: http://127.0.0.1:8080
+        launchMode: external
+        pythonExecutable: python
+        refreshTokenCredential: LABEL_STUDIO_PAT
+        startupTimeoutMs: 120000
+        shutdownGraceMs: 5000
+        restResponseMaxBytes: 8388608
+        activeTaskMaxBytes: 262144
+        focusAckTimeoutMs: 5000
+        contextLeaseTtlMs: 30000
+        eventWaitTimeoutMs: 25000
+        eventHistorySize: 64
+        contextOpenRetryMs: 1000
+        contextCloseTimeoutMs: 1000
+        recentProjectLimit: 10

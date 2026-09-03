@@ -5,5 +5,5 @@ import type { createLabelStudioLayoutStore } from './store.ts';
 /** Testable replacement-root props assembled by the slot runtime. */
 export type LabelStudioRootProps = PropsRuntime<'root'> & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.overlay'> & PropsStore<ReturnType<typeof createLabelStudioLayoutStore>> & PropsLocale<typeof NS> & InjectFace<LabelStudioRootInjected>;
 /** Render the original four child slots and the package-private workbench in one root. */
-export declare function LabelStudioRoot({ useStore, actions, useSessions, renderSlot, SessionProvider, useLabelStudioPanel, useLabelStudioContext, baseUrl, bindSession, confirmApplied, selectTarget, close, reload, openExternal, t, }: LabelStudioRootProps): import("react").JSX.Element;
+export declare function LabelStudioRoot({ useStore, actions, useSessions, renderSlot, SessionProvider, useLabelStudioPanel, useLabelStudioContext, baseUrl, bindSession, confirmApplied, selectTarget, selectPage, close, reload, openExternal, t, }: LabelStudioRootProps): import("react").JSX.Element;
 //# sourceMappingURL=LabelStudioRoot.d.ts.map

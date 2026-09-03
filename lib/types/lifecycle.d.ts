@@ -29,6 +29,7 @@ export interface LabelStudioShutdownResources {
     readonly disposeBroker: () => Promise<void>;
     readonly disposeRegistry: () => void;
     readonly disposeRuntime: () => Promise<void>;
+    readonly disposeStore: () => Promise<void>;
 }
 /**
  * Close ingress, quiesce work, and then release stateful resources in order.

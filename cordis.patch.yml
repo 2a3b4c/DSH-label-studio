@@ -21,3 +21,4 @@
         eventHistorySize: 64
         contextOpenRetryMs: 1000
         contextCloseTimeoutMs: 1000
+        recentProjectLimit: 10

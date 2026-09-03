@@ -1,5 +1,5 @@
 /** Host-side validation for Label Studio context identifiers. */
-import type { LabelStudioAnnotationId, LabelStudioContextLeaseId, LabelStudioContextSourceId, LabelStudioFocusCorrelationId, LabelStudioNavigationSequence, LabelStudioPredictionId, LabelStudioProjectId, LabelStudioTaskId } from 'dsh-label-studio-workbench/protocol';
+import type { LabelStudioAnnotationId, LabelStudioContextLeaseId, LabelStudioContextSourceId, LabelStudioFocusCorrelationId, LabelStudioNavigationSequence, LabelStudioPredictionId, LabelStudioProjectId, LabelStudioTaskId } from '@deepseek-ai/dsh-label-studio-protocol';
 /**
  * Validate and brand a Label Studio project id.
  * @param value - untrusted numeric REST or JSON value.

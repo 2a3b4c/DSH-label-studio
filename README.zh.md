@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-面向 DSH Web 界面的可安装 Label Studio Bundle。仓库根包同时包含 Host 运行时、浏览器 Client、共享协议声明，以及用兼容布局和右侧 Label Studio iframe 替换 Web 根组件的 patch。`0.2.0-alpha.2` 适配 DSH `0.1.2-alpha.3`。
+面向 DSH Web 界面的可安装 Label Studio Bundle。仓库根包同时包含 Host 运行时、浏览器 Client、共享协议声明，以及用兼容布局和右侧 Label Studio iframe 替换 Web 根组件的 patch。适配 DSH `0.1.2-alpha.3`。
 
 ## 装配
 
@@ -46,6 +46,7 @@ npx @deepseek-ai/dsh@0.1.2-alpha.3 plugin --profile web add --workspace-root "$L
 | `eventHistorySize` | `64` | 每个 DSH Session 为重连回放保留的正 revision 事件数量。 |
 | `contextOpenRetryMs` | `1000` | 租约 open 结果未知或事件 wait 可恢复失败后，浏览器再次尝试前等待的正时长。 |
 | `contextCloseTimeoutMs` | `1000` | 浏览器尽力关闭租约时使用的正期限；最终清理由租约 TTL 保证。 |
+| `recentProjectLimit` | `10` | 每个 DSH Session 保留的最近访问项目数量，必须是 1–100 之间的正安全整数。 |
 
 配置只接受表中字段；未知字段会在插件配置阶段失败，不会被静默忽略。`allowDirectAnnotationUpdate` 会被明确拒绝，因为 controlled-task V1 的模型写入路径只有 prediction 创建。
 
@@ -61,7 +62,7 @@ Bundle patch 会在 DSH 启动前读取 `DSH_LABEL_STUDIO_LAUNCH_MODE` 和 `DSH_
 - `label_studio_create_prediction` 为任务写入 Label Studio prediction result，实现预标注。
 - `label_studio_create_active_prediction` 为当前 Session 的 active task 创建显式 prediction，并只在 REST 成功后通知浏览器回刷该任务。
 - `label_studio_focus_task` 在浏览器确认 URL 后，把当前 Session 的工作台导航到指定项目、任务和可选已保存 annotation。
-- `label_studio_get_active_task` 使用当前 Session 租约读取权威的项目 label config、任务数据、完整已保存 annotation 和 prediction。
+- `label_studio_get_active_task` 使用当前 Session 租约读取权威的项目 label config、任务数据、完整已保存 annotation 和 prediction。项目读取返回 HTTP 404 时，插件会在当前 Session 历史中把该项目标为 deleted，把持久页面回退到项目列表，并结束失效的实时租约。只有插件控制的 REST 读取会触发该检查；插件不会观察 iframe 内的任意导航。
 
 模型会以规范 JSON 值获得项目、任务和 prediction 的数值 id。任务导航要求当前 Session 具有实时浏览器租约，分发前清空旧 target，并且只在浏览器应用请求 URL 后成功；该结果不声称 iframe 网络加载已经完成。读取当前任务时，Host REST 客户端只使用租约中的 id 重新获取数据，并拒绝 project、task、annotation 或 prediction 关联不一致的响应。当前任务预标工具不接收 task id：它会验证租约中的 task/project 关联，在 dispatch 前复查租约 generation 和 target revision，把调用方显式提供的 tag-specific `result` 传给 Label Studio，并只在成功响应后发布 `prediction-created`。该工具不会从旧 annotation 推断结果，也不声称 raw label-config XML 能验证所有模态。没有工具会更新已保存 annotation；用户应在 Label Studio 中审阅、接受或修改 prediction。iframe 只负责呈现：创建项目、读取任务和预标注都不依赖跨域 DOM 访问或浏览器自动化。
 
@@ -73,11 +74,13 @@ Bundle patch 会在 DSH 启动前读取 `DSH_LABEL_STUDIO_LAUNCH_MODE` 和 `DSH_
 
 ## 上下文通道
 
-Host 通过 `ctx.connection.rpc.handle()` 注册 `/label-studio`；DSH `0.1.2-alpha.3` 的 Connection 会在插件代码运行前统一应用 Host、Origin、浏览器认证和跨站请求检查。六个端点分别用于打开和关闭租约、预留和发布受控 target、等待 revision 事件，以及确认 Host focus 请求。Connection 的外层 `RpcResult` 携带内嵌的 Label Studio outcome，其中错误码稳定且信息已经脱敏。这个通道绝不携带样本数据、annotation result、凭据或 Token。
+Host 通过 `ctx.connection.rpc.handle()` 注册 `/label-studio`；DSH `0.1.2-alpha.3` 的 Connection 会在插件代码运行前统一应用 Host、Origin、浏览器认证和跨站请求检查。七个端点分别用于打开和关闭租约、预留和发布受控 target、提交持久页面、等待 revision 事件，以及确认 Host focus 请求。Connection 的外层 `RpcResult` 携带内嵌的 Label Studio outcome，其中错误码稳定且信息已经脱敏。这个通道绝不携带样本数据、annotation result、凭据或 Token。
 
 `LabelStudioContextRegistry` 允许每个 DSH Session 持有一个有过期时间的浏览器 source 租约。打开租约和每次等待都会验证实时 `ctx.sessions` 条目或冷态 `ctx.sessionPersistence` 元数据；持久化读取失败或被取消时不会续期。`LabelStudioChangeBroker` 保存有界且按 Session 隔离的 revision 后缀，能够报告回放重置，并支持可取消长轮询和幂等 focus 确认。异步释放插件时，共享操作门会先一起关闭工具和 RPC，再释放 broker、注册表和运行时状态。
 
-浏览器会在 React commit 后绑定当前选中的 Session 并打开租约，手动选择 target 与 Host focus 请求共用一个串行队列。它先应用已经确认的 Label Studio task URL，再发布或确认 target；确认结果不确定时分别保留 observed 和 committed 事件游标；Session 或 Connection 更换时取消当前世代的请求。`prediction-created` 事件只有在 task id 与 active target 匹配时才让 iframe 回刷一次；回放重置则让当前 target 回刷一次。boot 投影会提供 `eventHistorySize`、`contextOpenRetryMs` 和 `contextCloseTimeoutMs`，但绝不包含凭据或任务内容。
+`label_studio_context` storage domain 在 DSH Session event log 之外保存当前项目列表、项目或任务页面，以及有界的最近项目元数据。Session id 和创建时间共同防止复用 id 读取旧记录。移除 Bundle 并重启后，它提供的 root、RPC handler、工具、租约和插件运行状态都会消失，但该 domain 会保留；不是由插件启动的 Label Studio 服务会继续运行。重新安装 Bundle 后，每个匹配 Session 会独立恢复。
+
+浏览器会在 React commit 后绑定当前选中的 Session，打开租约并恢复该 Session 的持久页面；手动页面选择与 Host focus 请求共用一个串行队列。它先应用已经确认的 Label Studio task URL，再发布或确认 target；确认结果不确定时分别保留 observed 和 committed 事件游标；Session 或 Connection 更换时取消当前世代的请求。页面栏会显示同步状态和有界的最近项目列表；deleted 项目仍可见但不可选择。`prediction-created` 事件只有在 task id 与 active target 匹配时才让 iframe 回刷一次；回放重置则让当前 target 回刷一次。boot 投影会提供 `eventHistorySize`、`contextOpenRetryMs` 和 `contextCloseTimeoutMs`，但绝不包含凭据或任务内容。
 
 ## 模型体验
 
@@ -90,6 +93,8 @@ Host 通过 `ctx.connection.rpc.handle()` 注册 `/label-studio`；DSH `0.1.2-al
 #### Token 影响
 
 插件装配期间影响固定：Native Tool 请求包含七个工具 schema；Code Mode 则包含相应的生成 SDK 声明。当前任务结果的大小取决于所选任务，并受 `activeTaskMaxBytes` 限制。
+
+页面选择和恢复不会新增 Session event，也不会改变 `deriveMessages()` 输出。只有模型显式调用工具时，DSH 才会记录普通的工具调用和结果事件。
 
 #### KV Cache 影响
 

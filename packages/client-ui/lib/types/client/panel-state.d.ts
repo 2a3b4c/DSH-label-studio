@@ -1,5 +1,5 @@
 import { type SnapshotStore } from '@deepseek-ai/dsh-client-store';
-import type { LabelStudioActiveTarget } from 'dsh-label-studio-workbench/protocol';
+import type { LabelStudioPageContext } from '@deepseek-ai/dsh-label-studio-protocol';
 /** Browser-local panel facts. */
 export interface LabelStudioPanelSnapshot {
     open: boolean;
@@ -26,20 +26,20 @@ export declare class LabelStudioPanelController {
     /** Replace the iframe element while retaining visibility state. */
     reload(): void;
     /**
-     * Stage a controlled task URL and wait until React commits the matching iframe src.
-     * @param target - Host-reserved target.
+     * Stage a controlled page URL and wait until React commits the matching iframe src.
+     * @param page - structured Label Studio page.
      * @returns promise resolved by {@link confirmApplied}.
      */
-    applyTarget(target: LabelStudioActiveTarget): Promise<void>;
+    applyPage(page: LabelStudioPageContext): Promise<void>;
     /**
      * Confirm that React committed one staged URL to the iframe node.
      * @param navigationRevision - revision observed by the panel layout effect.
      */
     confirmApplied(navigationRevision: number): void;
     /** Clear the controlled URL and reject every uncommitted navigation. */
-    clearTarget(): void;
-    /** Reload only a currently controlled target. */
-    reloadTarget(): void;
+    clearPage(): void;
+    /** Reload only a currently controlled page. */
+    reloadPage(): void;
     /** Open the controlled target, or the neutral endpoint, outside the dock. */
     openExternal(): void;
     /** Reject outstanding DOM confirmations during plugin teardown. */

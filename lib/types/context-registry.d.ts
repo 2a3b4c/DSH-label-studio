@@ -1,5 +1,5 @@
 /** Session-scoped ownership and target state for the Label Studio browser surface. */
-import type { LabelStudioActiveContext, LabelStudioActiveTarget, LabelStudioContextLeaseId, LabelStudioContextSourceId, LabelStudioFocusCorrelationId, LabelStudioLeaseOpenResult, LabelStudioLeaseSnapshot, LabelStudioNavigationSequence, LabelStudioTargetReservation, LabelStudioTargetState } from 'dsh-label-studio-workbench/protocol';
+import type { LabelStudioActiveContext, LabelStudioActiveTarget, LabelStudioContextLeaseId, LabelStudioContextSourceId, LabelStudioFocusCorrelationId, LabelStudioLeaseOpenResult, LabelStudioLeaseSnapshot, LabelStudioNavigationSequence, LabelStudioTargetReservation, LabelStudioTargetState } from '@deepseek-ai/dsh-label-studio-protocol';
 type SessionId = LabelStudioActiveContext['sessionId'];
 /** Stable failure categories mapped to RPC outcomes by the transport layer. */
 export type LabelStudioContextErrorCode = 'invalid-request' | 'session-not-found' | 'lease-conflict' | 'lease-expired' | 'stale-generation' | 'stale-revision' | 'future-revision' | 'focus-conflict' | 'focus-not-found';
@@ -45,7 +45,7 @@ export declare class LabelStudioContextRegistry {
      * @param replayBaseline - broker revision captured before creating the lease.
      * @returns the immutable lease and its original replay baseline.
      */
-    openLease(sessionId: SessionId, sourceId: LabelStudioContextSourceId, replayBaseline: number): LabelStudioLeaseOpenResult;
+    openLease(sessionId: SessionId, sourceId: LabelStudioContextSourceId, replayBaseline: number): Pick<LabelStudioLeaseOpenResult, 'lease' | 'replayBaseline'>;
     /**
      * Reserve the next target revision for a browser navigation.
      * @param leaseId - current Host-issued lease id.
@@ -55,6 +55,15 @@ export declare class LabelStudioContextRegistry {
      * @returns the immutable reservation receipt.
      */
     reserveBrowserTarget(leaseId: LabelStudioContextLeaseId, generation: number, navigationSequence: LabelStudioNavigationSequence, expectedTargetRevision: number): LabelStudioTargetReservation;
+    /**
+     * Replace the current target with vacant state for a browser navigation.
+     * @param leaseId - current Host-issued lease id.
+     * @param generation - current lease generation.
+     * @param navigationSequence - browser-monotonic navigation sequence.
+     * @param expectedTargetRevision - compare-and-swap revision observed before clearing.
+     * @returns the immutable vacant state, including the incremented target revision.
+     */
+    clearBrowserTarget(leaseId: LabelStudioContextLeaseId, generation: number, navigationSequence: LabelStudioNavigationSequence, expectedTargetRevision: number): LabelStudioTargetState;
     /**
      * Reserve the next target revision for a Host focus request.
      * @param leaseId - current Host-issued lease id.

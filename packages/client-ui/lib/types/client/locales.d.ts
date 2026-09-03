@@ -14,6 +14,12 @@ export declare const zh: {
     readonly 'panel.taskId': "任务 ID";
     readonly 'panel.annotationId': "标注 ID（可选）";
     readonly 'panel.navigate': "定位";
+    readonly 'panel.currentPage': "当前位置";
+    readonly 'panel.projects': "项目列表";
+    readonly 'panel.recentProjects': "最近项目";
+    readonly 'panel.project': "项目";
+    readonly 'panel.deleted': "已删除";
+    readonly 'panel.bridgeLimitation': "仅同步插件控制的导航，无法观察页面内任意点击或未保存草稿。";
     readonly 'status.no-session': "未选择 DSH 会话";
     readonly 'status.no-task': "未选择任务";
     readonly 'status.leasing': "正在建立页面租约";

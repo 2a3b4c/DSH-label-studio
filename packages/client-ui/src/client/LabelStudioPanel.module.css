@@ -1,0 +1,140 @@
+.panel {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  flex-direction: column;
+  box-sizing: border-box;
+  border-left: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-base);
+}
+
+.panel[hidden] { display: none; }
+
+.panel[data-fullscreen] {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  width: 100% !important;
+  height: 100dvh;
+  border-left: 0;
+}
+
+.header {
+  display: flex;
+  min-height: 44px;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.title {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions { display: flex; flex: none; gap: 2px; }
+
+.targetBar {
+  display: grid;
+  grid-template-columns: minmax(64px, 0.8fr) minmax(64px, 0.8fr) minmax(64px, 0.8fr) auto minmax(96px, 1.4fr);
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.targetBar input,
+.targetBar button {
+  min-width: 0;
+  height: 28px;
+  box-sizing: border-box;
+}
+
+.targetBar output {
+  overflow: hidden;
+  align-self: center;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contextBar {
+  display: grid;
+  gap: 5px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+}
+
+.currentPage {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recentProjects {
+  display: flex;
+  overflow-x: auto;
+  gap: 5px;
+}
+
+.recentProjects button {
+  flex: none;
+  min-height: 25px;
+  padding: 2px 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.recentProjects button:disabled {
+  color: var(--dsw-alias-label-secondary);
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.bridgeLimitation {
+  margin: 0;
+  line-height: 1.35;
+}
+
+.iconButton {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.iframe {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  border: 0;
+  background: var(--dsw-alias-bg-base);
+}

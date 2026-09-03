@@ -14,7 +14,7 @@ test('Label Studio panel exposes a reversible fullscreen mode', async () => {
   assert.match(client, /"panel\.fullscreen": "全屏标注"/)
   assert.match(client, /"panel\.exitFullscreen": "退出全屏"/)
   assert.match(client, /const \[fullscreen, setFullscreen\]/)
-  assert.match(client, /event\.key !== "Escape"/)
+  assert.match(client, /event\.key === "Escape"/)
   assert.match(client, /"data-fullscreen": fullscreen \|\| void 0/)
   assert.match(client, /"aria-pressed": fullscreen/)
   assert.match(client, /position:fixed/)

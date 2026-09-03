@@ -45,7 +45,7 @@ test('published manifest declares the alpha.3 client graph', async () => {
   assert.equal(protocolManifest.version, manifest.version)
   assert.equal(
     clientManifest.peerDependencies['@deepseek-ai/dsh-label-studio-protocol'],
-    '^0.2.0-alpha.2',
+    'workspace:*',
   )
   assert.ok(inject.includes('@deepseek-ai/dsh-client-store'))
   assert.ok(inject.includes('@deepseek-ai/dsh-client-ui-renderer'))

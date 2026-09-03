@@ -1,7 +1,7 @@
 {
   "name": "dsh-label-studio-workbench",
   "description": "Label Studio plugin: managed local server, PAT-authenticated REST tools, and a docked browser workbench",
-  "version": "0.2.0-alpha.2",
+  "version": "0.2.0-alpha.3",
   "publishConfig": {
     "access": "public"
   },
@@ -62,7 +62,9 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/dsh-label-studio-protocol": "workspace:*",
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-brand": "^0.1.2-alpha.3",
@@ -79,12 +81,39 @@
     "@deepseek-ai/dsh-subprocess": "^0.1.2-alpha.3",
     "@deepseek-ai/cordis": "^4.0.2",
     "@deepseek-ai/dsh-session-persistence": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-storage-domain": "^0.1.2-alpha.3",
     "@deepseek-ai/dsh-tools": "^0.1.2-alpha.3",
     "@deepseek-ai/dsh-host-webserver": "^0.1.2-alpha.3",
     "react": "^18.2.0"
   },
   "scripts": {
     "configure-pat": "node configure-pat.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "typecheck": "tsc -p packages/protocol/tsconfig.json && tsc -p tsconfig.json && tsc -p packages/client-ui/tsconfig.json",
+    "bundle": "tsdown && pnpm --dir packages/protocol run bundle && pnpm --dir packages/client-ui run bundle",
+    "build": "pnpm run typecheck && pnpm run bundle",
+    "test:source": "vitest run --exclude '**/*.test.mjs' tests packages",
+    "test:docs": "vitest run tests/docs.spec.ts",
+    "test:artifact": "node --test tests/*.test.mjs",
+    "test:nodenext-consumer": "tsc -p tsconfig.nodenext-consumer.json",
+    "test": "pnpm run build && pnpm run test:source && pnpm run test:artifact && pnpm run test:nodenext-consumer"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-client-test-runtime": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-client-ui-layout": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-system-prompt": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-storage-domain": "^0.1.2-alpha.3",
+    "@deepseek-ai/dsh-util-values": "^0.1.2-alpha.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^22.20.0",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "^18.3.7",
+    "lightningcss": "^1.32.0",
+    "jsdom": "^27.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
   }
 }

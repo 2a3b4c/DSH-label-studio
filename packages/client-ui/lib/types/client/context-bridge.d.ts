@@ -1,7 +1,7 @@
 /** Typed browser caller for the Label Studio Connection channel. */
 import type { ConnectionGeneration, ConnectionHandle, ConnectionRpcFailure } from '@deepseek-ai/dsh-client-connection/client';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
-import type { LabelStudioActiveContext, LabelStudioActiveTarget, LabelStudioEventBatch, LabelStudioFocusCorrelationId, LabelStudioContextSourceId, LabelStudioLeaseOpenResult, LabelStudioLeaseSnapshot, LabelStudioNavigationSequence, LabelStudioRpcError, LabelStudioTargetReservation } from 'dsh-label-studio-workbench/protocol';
+import type { LabelStudioActiveContext, LabelStudioActiveTarget, LabelStudioEventBatch, LabelStudioFocusCorrelationId, LabelStudioContextSourceId, LabelStudioLeaseOpenResult, LabelStudioLeaseSnapshot, LabelStudioNavigationSequence, LabelStudioPageContext, LabelStudioRpcError, LabelStudioTargetReservation, LabelStudioSessionContextSnapshot } from '@deepseek-ai/dsh-label-studio-protocol';
 /** Browser dependencies for one logical Label Studio channel. */
 export interface LabelStudioBridgeClientOptions {
     readonly connection: Pick<ConnectionHandle, 'rpc' | 'generation'>;
@@ -57,7 +57,7 @@ export declare function isLabelStudioTransportUnknown(error: unknown): error is 
  * @returns whether the plugin rejected the request.
  */
 export declare function isLabelStudioPluginFailure(error: unknown): error is LabelStudioPluginFailure;
-/** Calls and validates the plugin's six fixed RPC endpoints. */
+/** Calls and validates the plugin's seven fixed RPC endpoints. */
 export declare class LabelStudioContextBridge {
     private readonly connection;
     private readonly channel;
@@ -65,7 +65,7 @@ export declare class LabelStudioContextBridge {
     constructor(options: LabelStudioBridgeClientOptions);
     /**
      * Read the current connected Host generation.
-     * @returns connected Host description, or absence during disconnection.
+     * @returns connected Host generation, or absence during disconnection.
      */
     currentHost(): ConnectionGeneration | undefined;
     /**
@@ -107,6 +107,16 @@ export declare class LabelStudioContextBridge {
      * @returns committed context.
      */
     publishTarget(lease: LabelStudioLeaseSnapshot, targetRevision: number, target: LabelStudioActiveTarget, signal?: AbortSignal): Promise<LabelStudioActiveContext>;
+    /**
+     * Persist the selected page after browser target synchronization completes.
+     * @param lease - active lease.
+     * @param navigationSequence - browser-monotonic navigation sequence.
+     * @param expectedSessionContextRevision - durable page revision observed by the browser.
+     * @param page - structured Label Studio page to commit.
+     * @param signal - cancellation.
+     * @returns committed durable Session context.
+     */
+    commitPage(lease: LabelStudioLeaseSnapshot, navigationSequence: LabelStudioNavigationSequence, expectedSessionContextRevision: number, page: LabelStudioPageContext, signal?: AbortSignal): Promise<LabelStudioSessionContextSnapshot>;
     /**
      * Wait for events after the observed revision.
      * @param lease - active lease.

@@ -1,17 +1,19 @@
 /** Browser state machine for Session-bound controlled Label Studio pages. */
 import { type SnapshotStore } from '@deepseek-ai/dsh-client-store';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
-import type { LabelStudioActiveTarget, LabelStudioBrowserEvent, LabelStudioContextSourceId, LabelStudioLeaseSnapshot, LabelStudioNavigationSequence } from 'dsh-label-studio-workbench/protocol';
+import type { LabelStudioActiveTarget, LabelStudioBrowserEvent, LabelStudioContextSourceId, LabelStudioLeaseSnapshot, LabelStudioNavigationSequence, LabelStudioPageContext, LabelStudioSessionContextSnapshot } from '@deepseek-ai/dsh-label-studio-protocol';
 import { type LabelStudioContextBridge } from './context-bridge.ts';
 /** Controlled iframe operations owned by the panel controller. */
 export interface LabelStudioControlledPage {
     setOpen(open: boolean): void;
-    applyTarget(target: LabelStudioActiveTarget): Promise<void>;
-    clearTarget(): void;
-    reloadTarget(): void;
+    applyPage(page: LabelStudioPageContext): Promise<void>;
+    clearPage(): void;
+    reloadPage(): void;
 }
 /** User-visible synchronization phase. */
 export type LabelStudioSyncStatus = 'no-session' | 'no-task' | 'leasing' | 'lease-active' | 'lease-conflict' | 'lease-expired' | 'syncing' | 'reconciling' | 'synced' | 'error';
+/** Durable Session-page synchronization phase. */
+export type LabelStudioSessionContextStatus = 'idle' | 'restoring' | 'ready' | 'committing' | 'conflict' | 'unavailable';
 /** Observable browser synchronization facts. */
 export interface LabelStudioContextSnapshot {
     readonly sessionId?: SessionId | undefined;
@@ -23,6 +25,8 @@ export interface LabelStudioContextSnapshot {
     readonly observedEventRevision: number;
     readonly bufferedEventCount: number;
     readonly target?: LabelStudioActiveTarget | undefined;
+    readonly sessionContext: LabelStudioSessionContextSnapshot;
+    readonly sessionContextStatus: LabelStudioSessionContextStatus;
     readonly status: LabelStudioSyncStatus;
     readonly error?: string | undefined;
 }
@@ -70,7 +74,7 @@ export declare class LabelStudioContextController {
      * @param target - parsed controlled target.
      * @returns completion after a deterministic commit or reconciliation.
      */
-    selectTarget(target: LabelStudioActiveTarget): Promise<void>;
+    selectPage(page: LabelStudioPageContext): Promise<void>;
     /**
      * Apply one focus event through the same serial queue as manual navigation.
      * @param event - Host focus request.
@@ -78,7 +82,9 @@ export declare class LabelStudioContextController {
     applyFocus(event: Extract<LabelStudioBrowserEvent, {
         kind: 'focus-task';
     }>): Promise<void>;
-    /** Reload the current controlled task only. */
+    /** Retry the current Session context by reopening its lease. */
+    retrySessionContext(): void;
+    /** Reload the current controlled page only. */
     reload(): void;
     /** Stop listeners and requests before returning; lease closure remains best effort. */
     dispose(): Promise<void>;
@@ -90,9 +96,11 @@ export declare class LabelStudioContextController {
     private acceptBatch;
     private processEvents;
     private performFocus;
-    private performSelection;
+    private performPageSelection;
+    private performTaskSelection;
     private applyAndPublish;
     private reconcileManual;
+    private commitPending;
     private mergeContext;
     private commitEvent;
     private rebuildAfterOverflow;

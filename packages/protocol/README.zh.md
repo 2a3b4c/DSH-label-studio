@@ -6,11 +6,11 @@ Label Studio Host 与浏览器插件共享的仅类型声明。该包让浏览�
 
 ## 发布的声明
 
-主入口导出带品牌的 project、task、annotation、prediction、source、lease、correlation 和 navigation sequence 类型，同时导出 controlled-task 通道使用的 active target、lease snapshot、reservation、target state、浏览器事件、事件 batch、RPC 请求/结果 map、内嵌 outcome 和脱敏错误声明。`SessionId` 从浏览器安全的 `@deepseek-ai/dsh-session/types` 入口导入。
+主入口导出带品牌的 project、task、annotation、prediction、source、lease、correlation 和 navigation sequence 类型，同时导出 controlled-task 通道使用的一般页面上下文、最近项目元数据、持久 Session 上下文 snapshot、active target、lease snapshot、reservation、target state、浏览器事件、事件 batch、RPC 请求/结果 map、内嵌 outcome 和脱敏错误声明。`SessionId` 从浏览器安全的 `@deepseek-ai/dsh-session/types` 入口导入。
 
 主入口不包含运行时值。Host 与浏览器 consumer 分别拥有自己的 JSON parser，并且只在对应 wire 字段通过验证后构造品牌值。独立的 invariant companion 只在运行时 invariant registry 中登记包所有权。
 
-Connection transport 负责外层 `RpcResult`，`LabelStudioRpcOutcome` 是内层业务结果。这种分层不会把插件错误码加入 Connection 的闭合框架错误集合。声明只包含 id、revision、租约状态和变更原因；它们不定义凭据、Token、样本数据或 annotation result 字段。
+Connection transport 负责外层 `RpcResult`，`LabelStudioRpcOutcome` 是内层业务结果。这种分层不会把插件错误码加入 Connection 的闭合框架错误集合。`lease/open` 返回持久页面 snapshot，`page/commit` 则使用 compare-and-swap revision 字段更新它。声明只包含 id、时间戳、可用状态、revision、租约状态和变更原因；它们不定义凭据、Token、样本数据或 annotation result 字段。
 
 ## 模型体验
 

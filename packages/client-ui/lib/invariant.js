@@ -4,6 +4,7 @@ const PACKAGE_NAME = "@deepseek-ai/dsh-client-ui-label-studio";
 const name = "client-ui-label-studio-invariant";
 /** Service required for package ownership registration. */
 const inject = ["invariants"];
+/** No runtime invariant: package behavior is asserted by its state, layout, and transport specs. */
 const install = () => {};
 /**
 * Register the package ownership companion.

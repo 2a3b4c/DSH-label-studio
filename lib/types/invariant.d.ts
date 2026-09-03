@@ -1,6 +1,6 @@
 /**
- * Package-owned invariant companion for `dsh-label-studio-workbench`.
- * @module dsh-label-studio-workbench/invariant
+ * Package-owned invariant companion for `@deepseek-ai/dsh-label-studio`.
+ * @module @deepseek-ai/dsh-label-studio/invariant
  */
 import type { Context } from '@deepseek-ai/cordis';
 /** Cordis companion plugin name. */

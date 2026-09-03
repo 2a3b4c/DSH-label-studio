@@ -1,7 +1,9 @@
 /** Session-isolated revision history, long polling, and focus acknowledgements. */
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
-import type { LabelStudioActiveContext, LabelStudioActiveTarget, LabelStudioBrowserEvent, LabelStudioChangeReason, LabelStudioContextLeaseId, LabelStudioFocusCorrelationId, LabelStudioTargetReservation, LabelStudioTaskId } from 'dsh-label-studio-workbench/protocol';
+import type { LabelStudioActiveContext, LabelStudioActiveTarget, LabelStudioBrowserEvent, LabelStudioChangeReason, LabelStudioContextLeaseId, LabelStudioFocusCorrelationId, LabelStudioProjectId, LabelStudioSessionContextSnapshot, LabelStudioTargetReservation, LabelStudioTaskId } from '@deepseek-ai/dsh-label-studio-protocol';
 import { type LabelStudioContextRegistry } from './context-registry.ts';
+import type { LabelStudioSessionIdentity } from './session-context-spec.ts';
+import type { LabelStudioSessionContextStore } from './session-context-store.ts';
 /** Host-only event suffix returned before the RPC layer adds current context. */
 export interface LabelStudioBrokerBatch {
     readonly events: readonly LabelStudioBrowserEvent[];
@@ -12,6 +14,7 @@ export interface LabelStudioBrokerBatch {
 export declare class LabelStudioChangeBroker {
     private readonly registry;
     private readonly historySize;
+    private readonly sessionContexts;
     private readonly states;
     private readonly unsubscribeLeaseEnded;
     private disposed;
@@ -19,8 +22,9 @@ export declare class LabelStudioChangeBroker {
      * Create a broker and subscribe to authoritative lease removal.
      * @param registry - context registry committing focus targets.
      * @param historySize - positive bounded event count retained per Session.
+     * @param sessionContexts - durable page store completed before target publication.
      */
-    constructor(registry: LabelStudioContextRegistry, historySize: number);
+    constructor(registry: LabelStudioContextRegistry, historySize: number, sessionContexts: LabelStudioSessionContextStore);
     /**
      * Publish a successful task mutation.
      * @param sessionId - Session whose controlled task changed.
@@ -48,8 +52,15 @@ export declare class LabelStudioChangeBroker {
      */
     deleteSession(sessionId: SessionId): void;
     /**
+     * Mark a confirmed missing project in durable Session history and retire its live lease.
+     * @param identity - exact Session lifecycle that observed the missing project.
+     * @param projectId - project confirmed missing by an authenticated REST read.
+     * @returns updated durable page snapshot with project-list fallback.
+     */
+    markProjectDeleted(identity: LabelStudioSessionIdentity, projectId: LabelStudioProjectId): Promise<LabelStudioSessionContextSnapshot>;
+    /**
      * Publish one focus request and await its matching browser ACK.
-     * @param sessionId - Session owning the browser lease.
+     * @param identity - exact Session lifecycle owning the browser lease.
      * @param correlationId - Host-generated idempotency key.
      * @param reservation - registry focus reservation.
      * @param target - target the browser must apply.
@@ -57,7 +68,7 @@ export declare class LabelStudioChangeBroker {
      * @param signal - caller/package cancellation.
      * @returns committed active context after ACK.
      */
-    requestFocus(sessionId: SessionId, correlationId: LabelStudioFocusCorrelationId, reservation: LabelStudioTargetReservation, target: LabelStudioActiveTarget, timeoutMs: number, signal: AbortSignal): Promise<LabelStudioActiveContext>;
+    requestFocus(identity: LabelStudioSessionIdentity, correlationId: LabelStudioFocusCorrelationId, reservation: LabelStudioTargetReservation, target: LabelStudioActiveTarget, timeoutMs: number, signal: AbortSignal): Promise<LabelStudioActiveContext>;
     /**
      * Wait for events after a Session cursor.
      * @param sessionId - DSH Session identity.
@@ -76,7 +87,7 @@ export declare class LabelStudioChangeBroker {
      * @param target - browser-applied target.
      * @returns committed active context.
      */
-    acknowledgeFocus(leaseId: LabelStudioContextLeaseId, generation: number, correlationId: LabelStudioFocusCorrelationId, targetRevision: number, target: LabelStudioActiveTarget): LabelStudioActiveContext;
+    acknowledgeFocus(leaseId: LabelStudioContextLeaseId, generation: number, correlationId: LabelStudioFocusCorrelationId, targetRevision: number, target: LabelStudioActiveTarget): Promise<LabelStudioActiveContext>;
     /** Unsubscribe, reject pending work, and clear all event histories. */
     dispose(): Promise<void>;
     private state;

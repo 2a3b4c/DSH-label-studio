@@ -1,7 +1,7 @@
 /** Authenticated Label Studio REST operations used by model tools. */
 import type { CredentialProvider, CredentialRef } from '@deepseek-ai/dsh-credentials';
-import type { JsonValue } from '@deepseek-ai/dsh-session';
-import type { LabelStudioActiveTarget, LabelStudioAnnotationId, LabelStudioPredictionId, LabelStudioProjectId, LabelStudioTaskId } from 'dsh-label-studio-workbench/protocol';
+import type { JsonValue } from '@deepseek-ai/dsh-util-values';
+import type { LabelStudioActiveTarget, LabelStudioAnnotationId, LabelStudioPredictionId, LabelStudioProjectId, LabelStudioTaskId } from '@deepseek-ai/dsh-label-studio-protocol';
 type Fetch = typeof globalThis.fetch;
 /** Project fields accepted by the project-creation operation. */
 export interface CreateProjectInput {
@@ -44,6 +44,18 @@ export declare class LabelStudioMutationOutcomeUnknownError extends Error {
      * @param operation - fixed HTTP method and path without credentials or response content.
      */
     constructor(operation: string);
+}
+/** Sanitized non-success response from one Label Studio HTTP operation. */
+export declare class LabelStudioHttpError extends Error {
+    readonly method: 'GET' | 'POST';
+    readonly path: string;
+    readonly status: number;
+    /**
+     * @param method - fixed request method.
+     * @param path - fixed REST path without credentials or response content.
+     * @param status - HTTP response status.
+     */
+    constructor(method: 'GET' | 'POST', path: string, status: number);
 }
 /** Complete annotation fields required by the active-task model view. */
 export interface LabelStudioAnnotationView {

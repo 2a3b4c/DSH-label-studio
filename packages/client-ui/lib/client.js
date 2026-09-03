@@ -1,6 +1,6 @@
 window.__ModuleLoader__.load({
 	id: "dsh-label-studio-workbench",
-	factory: (require) => {
+	factory(require) {
 		var module = { exports: {} };
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
@@ -22,46 +22,69 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region src/client/task-url.ts
-		/**
-		* Parse one positive decimal identifier without accepting alternate numeric syntax.
-		* @param value - browser input value.
-		* @param field - field name used in the failure message.
-		* @returns positive safe integer.
-		*/
+		//#region src/client/page-url.ts
 		function positiveId(value, field) {
 			if (!/^[1-9][0-9]*$/.test(value)) throw new Error(`label-studio client: ${field} must be a positive integer`);
 			const parsed = Number(value);
 			if (!Number.isSafeInteger(parsed)) throw new Error(`label-studio client: ${field} must be a positive safe integer`);
 			return parsed;
 		}
+		function assertId(value, field) {
+			if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`label-studio client: ${field} must be a positive safe integer`);
+		}
+		function baseOrigin(baseUrl) {
+			const base = new URL(baseUrl);
+			if (!(base.hostname === "127.0.0.1" || base.hostname === "localhost" || base.hostname === "[::1]") || !["http:", "https:"].includes(base.protocol)) throw new Error("label-studio client: baseUrl must be a loopback HTTP(S) origin");
+			if (base.username !== "" || base.password !== "" || base.pathname !== "/" || base.search !== "" || base.hash !== "") throw new Error("label-studio client: baseUrl must contain only a loopback origin");
+			return base;
+		}
 		/**
-		* Parse the workbench target controls into branded protocol identifiers.
+		* Parse task controls into a structured task page.
 		* @param input - untrusted browser input strings.
-		* @returns validated controlled target.
+		* @returns validated task page.
 		*/
 		function parseLabelStudioTargetInput(input) {
 			const projectId = positiveId(input.projectId, "projectId");
 			const taskId = positiveId(input.taskId, "taskId");
 			const annotation = input.annotationId?.trim();
 			return {
+				view: "task",
 				projectId,
 				taskId,
 				...annotation === void 0 || annotation === "" ? {} : { annotationId: positiveId(annotation, "annotationId") }
 			};
 		}
 		/**
-		* Build the Label Studio 1.22 controlled-task route verified by Task 3.
-		* @param baseUrl - Host-validated Label Studio endpoint.
-		* @param target - validated project, task, and optional annotation ids.
-		* @returns same-origin project data URL selecting the task.
+		* Build one same-origin Label Studio page URL from validated structured ids.
+		* @param baseUrl - Host-validated Label Studio origin.
+		* @param page - controlled projects, project, or task page.
+		* @returns absolute same-origin URL.
 		*/
-		function buildLabelStudioTaskUrl(baseUrl, target) {
-			const base = new URL(baseUrl);
-			const url = new URL(`/projects/${String(target.projectId)}/data`, base.origin);
-			url.searchParams.set("task", String(target.taskId));
-			if (target.annotationId !== void 0) url.searchParams.set("annotation", String(target.annotationId));
+		function buildLabelStudioPageUrl(baseUrl, page) {
+			const base = baseOrigin(baseUrl);
+			if (page.view === "projects") return base.href;
+			assertId(page.projectId, "projectId");
+			const url = new URL(`/projects/${String(page.projectId)}/data`, base.origin);
+			if (page.view === "project") return url.href;
+			assertId(page.taskId, "taskId");
+			url.searchParams.set("task", String(page.taskId));
+			if (page.annotationId !== void 0) {
+				assertId(page.annotationId, "annotationId");
+				url.searchParams.set("annotation", String(page.annotationId));
+			}
 			return url.href;
+		}
+		/**
+		* Convert a task page to the active-target fields used by the Host lease registry.
+		* @param page - validated task page.
+		* @returns active target without its page discriminant.
+		*/
+		function targetOfPage(page) {
+			return {
+				projectId: page.projectId,
+				taskId: page.taskId,
+				...page.annotationId === void 0 ? {} : { annotationId: page.annotationId }
+			};
 		}
 		//#endregion
 		//#region src/client/panel-state.ts
@@ -107,18 +130,18 @@ window.__ModuleLoader__.load({
 				});
 			}
 			/**
-			* Stage a controlled task URL and wait until React commits the matching iframe src.
-			* @param target - Host-reserved target.
+			* Stage a controlled page URL and wait until React commits the matching iframe src.
+			* @param page - structured Label Studio page.
 			* @returns promise resolved by {@link confirmApplied}.
 			*/
-			applyTarget(target) {
+			applyPage(page) {
 				this.rejectPending("label-studio panel: navigation superseded");
 				const current = this.store.getSnapshot();
 				const navigationRevision = current.navigationRevision + 1;
 				this.store.set({
 					...current,
 					navigationRevision,
-					targetUrl: buildLabelStudioTaskUrl(this.baseUrl, target)
+					targetUrl: buildLabelStudioPageUrl(this.baseUrl, page)
 				});
 				return new Promise((resolve, reject) => {
 					this.pending.set(navigationRevision, {
@@ -138,7 +161,7 @@ window.__ModuleLoader__.load({
 				pending.resolve();
 			}
 			/** Clear the controlled URL and reject every uncommitted navigation. */
-			clearTarget() {
+			clearPage() {
 				this.rejectPending("label-studio panel: navigation cleared");
 				const current = this.store.getSnapshot();
 				this.store.set({
@@ -148,8 +171,8 @@ window.__ModuleLoader__.load({
 					navigationRevision: current.navigationRevision + 1
 				});
 			}
-			/** Reload only a currently controlled target. */
-			reloadTarget() {
+			/** Reload only a currently controlled page. */
+			reloadPage() {
 				if (this.store.getSnapshot().targetUrl !== void 0) this.reload();
 			}
 			/** Open the controlled target, or the neutral endpoint, outside the dock. */
@@ -237,7 +260,7 @@ window.__ModuleLoader__.load({
 		function isLabelStudioPluginFailure(error) {
 			return isRecord(error) && error.kind === "plugin";
 		}
-		/** Calls and validates the plugin's six fixed RPC endpoints. */
+		/** Calls and validates the plugin's seven fixed RPC endpoints. */
 		var LabelStudioContextBridge = class {
 			connection;
 			channel;
@@ -248,7 +271,7 @@ window.__ModuleLoader__.load({
 			}
 			/**
 			* Read the current connected Host generation.
-			* @returns connected Host description, or absence during disconnection.
+			* @returns connected Host generation, or absence during disconnection.
 			*/
 			currentHost() {
 				return this.connection.generation.getSnapshot();
@@ -312,6 +335,23 @@ window.__ModuleLoader__.load({
 					targetRevision,
 					target: targetWire(target)
 				}, parseActiveContext, signal);
+			}
+			/**
+			* Persist the selected page after browser target synchronization completes.
+			* @param lease - active lease.
+			* @param navigationSequence - browser-monotonic navigation sequence.
+			* @param expectedSessionContextRevision - durable page revision observed by the browser.
+			* @param page - structured Label Studio page to commit.
+			* @param signal - cancellation.
+			* @returns committed durable Session context.
+			*/
+			commitPage(lease, navigationSequence, expectedSessionContextRevision, page, signal) {
+				return this.mutate("page/commit", {
+					...leaseFields(lease),
+					navigationSequence,
+					expectedSessionContextRevision,
+					page: pageWire(page)
+				}, parseSessionContext, signal);
 			}
 			/**
 			* Wait for events after the observed revision.
@@ -387,6 +427,19 @@ window.__ModuleLoader__.load({
 				...target.annotationId === void 0 ? {} : { annotationId: target.annotationId }
 			};
 		}
+		function pageWire(page) {
+			if (page.view === "projects") return { view: "projects" };
+			if (page.view === "project") return {
+				view: "project",
+				projectId: page.projectId
+			};
+			return {
+				view: "task",
+				projectId: page.projectId,
+				taskId: page.taskId,
+				...page.annotationId === void 0 ? {} : { annotationId: page.annotationId }
+			};
+		}
 		function isAborted(signal) {
 			return signal?.aborted === true;
 		}
@@ -427,7 +480,41 @@ window.__ModuleLoader__.load({
 			const object = record(value, "open result");
 			return {
 				lease: parseLease(object.lease),
-				replayBaseline: integer(object.replayBaseline, "replayBaseline")
+				replayBaseline: integer(object.replayBaseline, "replayBaseline"),
+				sessionContext: parseSessionContext(object.sessionContext)
+			};
+		}
+		function parsePage(value) {
+			const object = record(value, "page");
+			if (object.view === "projects") return { view: "projects" };
+			if (object.view === "project") return {
+				view: "project",
+				projectId: positive(object.projectId, "projectId")
+			};
+			if (object.view === "task") return {
+				view: "task",
+				projectId: positive(object.projectId, "projectId"),
+				taskId: positive(object.taskId, "taskId"),
+				...object.annotationId === void 0 ? {} : { annotationId: positive(object.annotationId, "annotationId") }
+			};
+			throw new Error("invalid page view");
+		}
+		function parseSessionContext(value) {
+			const object = record(value, "session context");
+			if (!Array.isArray(object.recentProjects)) throw new Error("invalid recentProjects");
+			return {
+				page: parsePage(object.page),
+				recentProjects: object.recentProjects.map((entry) => {
+					const recent = record(entry, "recent project");
+					if (recent.availability !== "available" && recent.availability !== "deleted") throw new Error("invalid project availability");
+					return {
+						projectId: positive(recent.projectId, "projectId"),
+						...recent.lastTaskId === void 0 ? {} : { lastTaskId: positive(recent.lastTaskId, "lastTaskId") },
+						lastVisitedAt: integer(recent.lastVisitedAt, "lastVisitedAt"),
+						availability: recent.availability
+					};
+				}),
+				revision: integer(object.revision, "revision")
 			};
 		}
 		function parseTarget(value) {
@@ -509,6 +596,7 @@ window.__ModuleLoader__.load({
 				correlationId: string(object.correlationId, "correlationId"),
 				targetRevision: integer(object.targetRevision, "targetRevision"),
 				target: parseTarget(object.target),
+				expectedSessionContextRevision: integer(object.expectedSessionContextRevision, "expectedSessionContextRevision"),
 				deadlineAt: positive(object.deadlineAt, "deadlineAt"),
 				committed: object.committed
 			};
@@ -535,7 +623,9 @@ window.__ModuleLoader__.load({
 				"stale-revision",
 				"future-revision",
 				"focus-conflict",
-				"focus-not-found"
+				"focus-not-found",
+				"session-context-conflict",
+				"session-context-unavailable"
 			].includes(value.code)) return false;
 			return value.code !== "lease-conflict" || Number.isSafeInteger(value.details.retryAfterMs) && Number(value.details.retryAfterMs) > 0;
 		}
@@ -582,6 +672,8 @@ window.__ModuleLoader__.load({
 					eventRevision: 0,
 					observedEventRevision: 0,
 					bufferedEventCount: 0,
+					sessionContext: emptySessionContext(),
+					sessionContextStatus: "idle",
 					status: "no-session"
 				});
 				this.offHost = bridge.onHostChanged(() => {
@@ -601,7 +693,7 @@ window.__ModuleLoader__.load({
 				this.rejectPendingManual("label-studio client: Session changed");
 				if (previous !== void 0) this.bestEffortClose(previous);
 				this.events = [];
-				this.page.clearTarget();
+				this.page.clearPage();
 				this.store.set({
 					sourceId: this.store.getSnapshot().sourceId,
 					...sessionId === void 0 ? {} : { sessionId },
@@ -610,6 +702,8 @@ window.__ModuleLoader__.load({
 					eventRevision: 0,
 					observedEventRevision: 0,
 					bufferedEventCount: 0,
+					sessionContext: emptySessionContext(),
+					sessionContextStatus: sessionId === void 0 ? "idle" : "restoring",
 					status: sessionId === void 0 ? "no-session" : "leasing"
 				});
 				if (sessionId !== void 0 && this.bridge.currentHost() !== void 0) this.startOpen();
@@ -619,8 +713,8 @@ window.__ModuleLoader__.load({
 			* @param target - parsed controlled target.
 			* @returns completion after a deterministic commit or reconciliation.
 			*/
-			selectTarget(target) {
-				const queued = this.navigationQueue.catch(() => {}).then(() => this.performSelection(target));
+			selectPage(page) {
+				const queued = this.navigationQueue.catch(() => {}).then(() => this.performPageSelection(page));
 				this.navigationQueue = queued;
 				return queued;
 			}
@@ -635,9 +729,15 @@ window.__ModuleLoader__.load({
 				this.navigationQueue = queued;
 				return queued;
 			}
-			/** Reload the current controlled task only. */
+			/** Retry the current Session context by reopening its lease. */
+			retrySessionContext() {
+				if (this.disposed || this.store.getSnapshot().sessionId === void 0) return;
+				this.expireLease(false);
+				this.startOpen();
+			}
+			/** Reload the current controlled page only. */
 			reload() {
-				this.page.reloadTarget();
+				this.page.reloadPage();
 			}
 			/** Stop listeners and requests before returning; lease closure remains best effort. */
 			dispose() {
@@ -652,7 +752,7 @@ window.__ModuleLoader__.load({
 				const lease = this.store.getSnapshot().lease;
 				if (lease !== void 0) this.bestEffortClose(lease);
 				this.events = [];
-				this.page.clearTarget();
+				this.page.clearPage();
 				return Promise.resolve();
 			}
 			epoch() {
@@ -689,6 +789,7 @@ window.__ModuleLoader__.load({
 				this.openInFlight = true;
 				this.patch({
 					status: "leasing",
+					sessionContextStatus: "restoring",
 					error: void 0
 				});
 				this.bridge.openLease(snapshot.sessionId, snapshot.sourceId, abort.signal).then((result) => {
@@ -705,14 +806,16 @@ window.__ModuleLoader__.load({
 						eventRevision: result.replayBaseline,
 						observedEventRevision: result.replayBaseline,
 						bufferedEventCount: 0,
-						status: before.target === void 0 ? "lease-active" : "syncing",
+						sessionContext: result.sessionContext,
+						sessionContextStatus: "restoring",
+						status: "syncing",
 						error: void 0
 					});
-					if (before.target !== void 0) {
-						this.page.reloadTarget();
-						this.selectTarget(before.target).catch(() => {});
-					}
-					this.startWait(result.lease);
+					const restore = this.navigationQueue.catch(() => {}).then(() => this.performPageSelection(result.sessionContext.page, true));
+					this.navigationQueue = restore;
+					restore.catch(() => {}).finally(() => {
+						if (this.current(epoch)) this.startWait(result.lease);
+					});
 				}).catch((error) => {
 					if (!this.current(epoch)) return;
 					this.openInFlight = false;
@@ -741,12 +844,14 @@ window.__ModuleLoader__.load({
 					if (isLabelStudioPluginFailure(error) && error.error.code === "session-not-found") {
 						this.patch({
 							status: "error",
+							sessionContextStatus: "unavailable",
 							error: "The selected DSH Session no longer exists"
 						});
 						return;
 					}
 					if (!isCancellation(error)) this.patch({
 						status: "error",
+						sessionContextStatus: "unavailable",
 						error: bridgeMessage(error)
 					});
 				});
@@ -800,7 +905,7 @@ window.__ModuleLoader__.load({
 						observedEventRevision: batch.latestRevision,
 						bufferedEventCount: 0
 					});
-					if (snapshot.target !== void 0) this.page.reloadTarget();
+					if (snapshot.target !== void 0) this.page.reloadPage();
 				} else {
 					const known = new Set(this.events.map((event) => event.eventRevision));
 					for (const event of batch.events) if (event.eventRevision > snapshot.eventRevision && !known.has(event.eventRevision)) {
@@ -829,7 +934,7 @@ window.__ModuleLoader__.load({
 					const event = this.events[0];
 					if (event === void 0) return;
 					if (event.kind === "task-changed") {
-						if (this.store.getSnapshot().target?.taskId === event.taskId) this.page.reloadTarget();
+						if (this.store.getSnapshot().target?.taskId === event.taskId) this.page.reloadPage();
 						this.commitEvent(event.eventRevision);
 						continue;
 					}
@@ -837,6 +942,8 @@ window.__ModuleLoader__.load({
 						this.patch({
 							target: context.target,
 							targetRevision: context.targetRevision,
+							sessionContext: focusSnapshot(this.store.getSnapshot().sessionContext, event, this.clock()),
+							sessionContextStatus: "ready",
 							status: "synced",
 							error: void 0
 						});
@@ -844,7 +951,7 @@ window.__ModuleLoader__.load({
 						continue;
 					}
 					if (context.targetRevision === event.targetRevision && context.phase === "vacant") {
-						this.page.clearTarget();
+						this.page.clearPage();
 						this.patch({
 							target: void 0,
 							targetRevision: context.targetRevision,
@@ -871,7 +978,7 @@ window.__ModuleLoader__.load({
 					error: void 0
 				});
 				try {
-					await this.page.applyTarget(event.target);
+					await this.page.applyPage(pageOfTarget(event.target));
 					if (!this.currentNavigation(epoch, navigationEpoch)) return false;
 					const committed = await this.bridge.acknowledgeFocus(lease, event.correlationId, event.targetRevision, event.target, this.generationSignal());
 					if (!this.currentNavigation(epoch, navigationEpoch)) return false;
@@ -879,6 +986,8 @@ window.__ModuleLoader__.load({
 						lease: leaseFromContext(committed),
 						target: committed.target,
 						targetRevision: committed.targetRevision,
+						sessionContext: focusSnapshot(this.store.getSnapshot().sessionContext, event, this.clock()),
+						sessionContextStatus: "ready",
 						status: "synced",
 						error: void 0
 					});
@@ -892,28 +1001,65 @@ window.__ModuleLoader__.load({
 						});
 						return false;
 					}
-					this.page.clearTarget();
+					this.page.clearPage();
 					this.patch({
 						target: void 0,
+						sessionContextStatus: contextFailureStatus(error),
 						status: "error",
 						error: bridgeMessage(error)
 					});
 					return true;
 				}
 			}
-			async performSelection(target) {
+			async performPageSelection(page, restoring = false) {
 				const snapshot = this.store.getSnapshot();
 				const lease = snapshot.lease;
 				if (lease === void 0) throw new Error("label-studio client: no active page lease");
 				const epoch = this.epoch();
 				const navigationEpoch = ++this.navigationEpoch;
-				const sequence = Number(snapshot.navigationSequence) + 1;
-				const deferred = makeDeferred();
+				const sequence = restoring && page.view !== "task" ? snapshot.navigationSequence : Number(snapshot.navigationSequence) + 1;
+				this.page.setOpen(true);
 				this.patch({
 					navigationSequence: sequence,
+					sessionContextStatus: restoring ? "restoring" : "committing",
 					status: "syncing",
 					error: void 0
 				});
+				if (page.view !== "task") try {
+					await this.page.applyPage(page);
+					if (!this.currentNavigation(epoch, navigationEpoch)) throw new Error("label-studio client: navigation superseded");
+					if (restoring) {
+						this.patch({
+							target: void 0,
+							sessionContextStatus: "ready",
+							status: "no-task",
+							error: void 0
+						});
+						return;
+					}
+					const committed = await this.bridge.commitPage(lease, sequence, snapshot.sessionContext.revision, page, this.generationSignal());
+					if (!this.currentNavigation(epoch, navigationEpoch)) throw new Error("label-studio client: navigation superseded");
+					this.patch({
+						target: void 0,
+						sessionContext: committed,
+						sessionContextStatus: "ready",
+						status: "no-task",
+						error: void 0
+					});
+					return;
+				} catch (error) {
+					if (this.current(epoch)) this.patch({
+						sessionContextStatus: contextFailureStatus(error),
+						status: "error",
+						error: bridgeMessage(error)
+					});
+					throw toError(error);
+				}
+				await this.performTaskSelection(page, lease, sequence, snapshot, epoch, navigationEpoch);
+			}
+			async performTaskSelection(page, lease, sequence, snapshot, epoch, navigationEpoch) {
+				const target = targetOfPage(page);
+				const deferred = makeDeferred();
 				let reservation;
 				try {
 					reservation = await this.bridge.reserveTarget(lease, sequence, snapshot.targetRevision, this.generationSignal());
@@ -926,6 +1072,8 @@ window.__ModuleLoader__.load({
 							sequence,
 							expectedRevision: snapshot.targetRevision,
 							target,
+							page,
+							expectedSessionContextRevision: snapshot.sessionContext.revision,
 							deadline: lease.expiresAt,
 							deferred
 						};
@@ -935,9 +1083,10 @@ window.__ModuleLoader__.load({
 						});
 						return deferred.promise;
 					}
-					this.page.clearTarget();
+					this.page.clearPage();
 					this.patch({
 						target: void 0,
+						sessionContextStatus: contextFailureStatus(error),
 						status: "error",
 						error: bridgeMessage(error)
 					});
@@ -950,6 +1099,8 @@ window.__ModuleLoader__.load({
 					sequence,
 					expectedRevision: snapshot.targetRevision,
 					target,
+					page,
+					expectedSessionContextRevision: snapshot.sessionContext.revision,
 					targetRevision: reservation.targetRevision,
 					deadline: lease.expiresAt,
 					deferred
@@ -958,19 +1109,12 @@ window.__ModuleLoader__.load({
 			async applyAndPublish(pending, epoch, navigationEpoch) {
 				try {
 					this.page.setOpen(true);
-					await this.page.applyTarget(pending.target);
+					await this.page.applyPage(pending.page);
 					if (!this.currentNavigation(epoch, navigationEpoch)) throw new Error("label-studio client: navigation superseded");
 					const committed = await this.bridge.publishTarget(pending.lease, requiredRevision(pending), pending.target, this.generationSignal());
 					if (!this.currentNavigation(epoch, navigationEpoch)) throw new Error("label-studio client: navigation superseded");
-					this.pendingManual = void 0;
-					this.patch({
-						lease: leaseFromContext(committed),
-						target: committed.target,
-						targetRevision: committed.targetRevision,
-						status: "synced",
-						error: void 0
-					});
-					pending.deferred.resolve();
+					pending.phase = "commit";
+					await this.commitPending(pending, committed, epoch, navigationEpoch);
 				} catch (error) {
 					if (!this.current(epoch)) {
 						pending.deferred.reject(/* @__PURE__ */ new Error("label-studio client: navigation superseded"));
@@ -986,9 +1130,10 @@ window.__ModuleLoader__.load({
 						return;
 					}
 					this.pendingManual = void 0;
-					this.page.clearTarget();
+					this.page.clearPage();
 					this.patch({
 						target: void 0,
+						sessionContextStatus: contextFailureStatus(error),
 						status: "error",
 						error: bridgeMessage(error)
 					});
@@ -1002,7 +1147,7 @@ window.__ModuleLoader__.load({
 				if (pending === void 0 || !this.current(epoch)) return;
 				if (this.clock() >= pending.deadline) {
 					this.pendingManual = void 0;
-					this.page.clearTarget();
+					this.page.clearPage();
 					pending.deferred.reject(/* @__PURE__ */ new Error("label-studio client: reconciliation deadline expired"));
 					this.expireLease();
 					this.schedule(() => {
@@ -1011,14 +1156,13 @@ window.__ModuleLoader__.load({
 					return;
 				}
 				if (context.phase === "committed" && sameTarget(context.target, pending.target)) {
-					this.pendingManual = void 0;
-					this.patch({
-						target: context.target,
+					await this.commitPending(pending, {
+						sessionId: this.store.getSnapshot().sessionId,
+						sourceId: this.store.getSnapshot().sourceId,
+						...pending.lease,
 						targetRevision: context.targetRevision,
-						status: "synced",
-						error: void 0
-					});
-					pending.deferred.resolve();
+						target: context.target
+					}, epoch, this.navigationEpoch);
 					return;
 				}
 				if (context.phase === "reserved" && context.reservation.kind === "browser" && context.reservation.navigationSequence === pending.sequence) {
@@ -1036,9 +1180,50 @@ window.__ModuleLoader__.load({
 				} catch (error) {
 					if (!isLabelStudioTransportUnknown(error)) {
 						this.pendingManual = void 0;
-						this.page.clearTarget();
+						this.page.clearPage();
 						pending.deferred.reject(toError(error));
 					}
+				}
+			}
+			async commitPending(pending, active, epoch, navigationEpoch) {
+				try {
+					const sessionContext = await this.bridge.commitPage(pending.lease, pending.sequence, pending.expectedSessionContextRevision, pending.page, this.generationSignal());
+					if (!this.currentNavigation(epoch, navigationEpoch)) throw new Error("label-studio client: navigation superseded");
+					this.pendingManual = void 0;
+					this.patch({
+						lease: leaseFromContext(active),
+						target: active.target,
+						targetRevision: active.targetRevision,
+						sessionContext,
+						sessionContextStatus: "ready",
+						status: "synced",
+						error: void 0
+					});
+					pending.deferred.resolve();
+				} catch (error) {
+					if (!this.current(epoch)) {
+						pending.deferred.reject(/* @__PURE__ */ new Error("label-studio client: navigation superseded"));
+						return;
+					}
+					if (isLabelStudioTransportUnknown(error)) {
+						this.pendingManual = pending;
+						this.patch({
+							sessionContextStatus: "unavailable",
+							status: "reconciling",
+							error: "Page commit result is unknown"
+						});
+						await pending.deferred.promise;
+						return;
+					}
+					this.pendingManual = void 0;
+					this.patch({
+						sessionContextStatus: contextFailureStatus(error),
+						status: "error",
+						error: bridgeMessage(error)
+					});
+					const failure = toError(error);
+					pending.deferred.reject(failure);
+					throw failure;
 				}
 			}
 			mergeContext(context) {
@@ -1065,7 +1250,7 @@ window.__ModuleLoader__.load({
 			}
 			rebuildAfterOverflow(lease) {
 				this.events = [];
-				this.page.clearTarget();
+				this.page.clearPage();
 				this.patch({
 					lease: void 0,
 					target: void 0,
@@ -1089,7 +1274,7 @@ window.__ModuleLoader__.load({
 				this.waitAbort = void 0;
 				this.rejectPendingManual("label-studio client: lease expired");
 				this.events = [];
-				if (!preserveTarget) this.page.clearTarget();
+				if (!preserveTarget) this.page.clearPage();
 				this.patch({
 					lease: void 0,
 					...preserveTarget ? {} : { target: void 0 },
@@ -1178,6 +1363,46 @@ window.__ModuleLoader__.load({
 			if (pending.targetRevision === void 0) throw new Error("label-studio client: missing target reservation revision");
 			return pending.targetRevision;
 		}
+		function emptySessionContext() {
+			return {
+				page: { view: "projects" },
+				recentProjects: [],
+				revision: 0
+			};
+		}
+		function pageOfTarget(target) {
+			return {
+				view: "task",
+				projectId: target.projectId,
+				taskId: target.taskId,
+				...target.annotationId === void 0 ? {} : { annotationId: target.annotationId }
+			};
+		}
+		function samePage(left, right) {
+			if (left.view !== right.view) return false;
+			if (left.view === "projects" || right.view === "projects") return true;
+			if (left.projectId !== right.projectId) return false;
+			if (left.view === "project" || right.view === "project") return true;
+			return left.taskId === right.taskId && left.annotationId === right.annotationId;
+		}
+		function focusSnapshot(current, event, visitedAt) {
+			const page = pageOfTarget(event.target);
+			if (samePage(current.page, page)) return current;
+			const prior = current.recentProjects.filter((recent) => recent.projectId !== page.projectId);
+			return {
+				page,
+				recentProjects: [{
+					projectId: page.projectId,
+					lastTaskId: page.taskId,
+					lastVisitedAt: visitedAt,
+					availability: "available"
+				}, ...prior],
+				revision: event.expectedSessionContextRevision + 1
+			};
+		}
+		function contextFailureStatus(error) {
+			return isLabelStudioPluginFailure(error) && error.error.code === "session-context-conflict" ? "conflict" : "unavailable";
+		}
 		//#endregion
 		//#region src/client/locales.ts
 		/** Dictionary namespace owned by the Label Studio browser plugin. */
@@ -1196,6 +1421,12 @@ window.__ModuleLoader__.load({
 			"panel.taskId": "任务 ID",
 			"panel.annotationId": "标注 ID（可选）",
 			"panel.navigate": "定位",
+			"panel.currentPage": "当前位置",
+			"panel.projects": "项目列表",
+			"panel.recentProjects": "最近项目",
+			"panel.project": "项目",
+			"panel.deleted": "已删除",
+			"panel.bridgeLimitation": "仅同步插件控制的导航，无法观察页面内任意点击或未保存草稿。",
 			"status.no-session": "未选择 DSH 会话",
 			"status.no-task": "未选择任务",
 			"status.leasing": "正在建立页面租约",
@@ -1221,6 +1452,12 @@ window.__ModuleLoader__.load({
 			"panel.taskId": "Task ID",
 			"panel.annotationId": "Annotation ID (optional)",
 			"panel.navigate": "Go",
+			"panel.currentPage": "Current page",
+			"panel.projects": "Projects",
+			"panel.recentProjects": "Recent projects",
+			"panel.project": "Project",
+			"panel.deleted": "deleted",
+			"panel.bridgeLimitation": "Only plugin-controlled navigation is synchronized. Arbitrary iframe clicks and unsaved drafts are not observed.",
 			"status.no-session": "No DSH Session selected",
 			"status.no-task": "No task selected",
 			"status.leasing": "Opening page lease",
@@ -1233,8 +1470,8 @@ window.__ModuleLoader__.load({
 			"status.error": "Synchronization failed"
 		};
 		//#endregion
-		//#region \0dsh-css:LabelStudioPanel.module.css.mjs
-		const css$1 = ".LwyFZG_panel{box-sizing:border-box;border-left:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);flex-direction:column;min-width:0;height:100%;display:flex;overflow:hidden}.LwyFZG_panel[hidden]{display:none}.LwyFZG_panel[data-fullscreen]{z-index:100;position:fixed;inset:0;width:100%!important;height:100dvh;border-left:0}.LwyFZG_header{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);flex:none;justify-content:space-between;align-items:center;gap:12px;min-height:44px;padding:0 10px 0 14px;display:flex}.LwyFZG_title{color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;overflow:hidden}.LwyFZG_actions{flex:none;gap:2px;display:flex}.LwyFZG_targetBar{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);grid-template-columns:minmax(64px,.8fr) minmax(64px,.8fr) minmax(64px,.8fr) auto minmax(96px,1.4fr);gap:6px;padding:8px 10px;display:grid}.LwyFZG_targetBar input,.LwyFZG_targetBar button{box-sizing:border-box;min-width:0;height:28px}.LwyFZG_targetBar output{color:var(--dsw-alias-label-secondary);text-overflow:ellipsis;white-space:nowrap;align-self:center;font-size:11px;overflow:hidden}.LwyFZG_iconButton{width:30px;height:30px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;border-radius:8px;place-items:center;padding:0;display:grid}.LwyFZG_iconButton:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.LwyFZG_iframe{background:var(--dsw-alias-bg-base);border:0;flex:1;width:100%;min-height:0}";
+		//#region \0dsh-label-studio-css:/Users/xinlongzhang/PycharmProjects/dsh-label-studio-plugin-package/packages/client-ui/src/client/LabelStudioPanel.module.css.mjs
+		const css$1 = ".Q-ow9W_panel{box-sizing:border-box;border-left:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);flex-direction:column;min-width:0;height:100%;display:flex;overflow:hidden}.Q-ow9W_panel[hidden]{display:none}.Q-ow9W_panel[data-fullscreen]{z-index:100;border-left:0;height:100dvh;position:fixed;inset:0;width:100%!important}.Q-ow9W_header{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);flex:none;justify-content:space-between;align-items:center;gap:12px;min-height:44px;padding:0 10px 0 14px;display:flex}.Q-ow9W_title{color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;overflow:hidden}.Q-ow9W_actions{flex:none;gap:2px;display:flex}.Q-ow9W_targetBar{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);grid-template-columns:minmax(64px,.8fr) minmax(64px,.8fr) minmax(64px,.8fr) auto minmax(96px,1.4fr);gap:6px;padding:8px 10px;display:grid}.Q-ow9W_targetBar input,.Q-ow9W_targetBar button{box-sizing:border-box;min-width:0;height:28px}.Q-ow9W_targetBar output{color:var(--dsw-alias-label-secondary);text-overflow:ellipsis;white-space:nowrap;align-self:center;font-size:11px;overflow:hidden}.Q-ow9W_contextBar{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);gap:5px;padding:7px 10px;font-size:11px;display:grid}.Q-ow9W_currentPage{color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.Q-ow9W_recentProjects{gap:5px;display:flex;overflow-x:auto}.Q-ow9W_recentProjects button{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);min-height:25px;color:var(--dsw-alias-label-primary);cursor:pointer;border-radius:6px;flex:none;padding:2px 8px}.Q-ow9W_recentProjects button:disabled{color:var(--dsw-alias-label-secondary);cursor:not-allowed;opacity:.65}.Q-ow9W_bridgeLimitation{margin:0;line-height:1.35}.Q-ow9W_iconButton{width:30px;height:30px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;border-radius:8px;place-items:center;padding:0;display:grid}.Q-ow9W_iconButton:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.Q-ow9W_iframe{background:var(--dsw-alias-bg-base);border:0;flex:1;width:100%;min-height:0}";
 		const tagId$1 = "dsh-label-studio-workbench/LabelStudioPanel.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -1244,18 +1481,22 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var LabelStudioPanel_module_css_default = {
-			"panel": "LwyFZG_panel",
-			"iframe": "LwyFZG_iframe",
-			"header": "LwyFZG_header",
-			"iconButton": "LwyFZG_iconButton",
-			"title": "LwyFZG_title",
-			"actions": "LwyFZG_actions",
-			"targetBar": "LwyFZG_targetBar"
+			"actions": "Q-ow9W_actions",
+			"currentPage": "Q-ow9W_currentPage",
+			"title": "Q-ow9W_title",
+			"contextBar": "Q-ow9W_contextBar",
+			"header": "Q-ow9W_header",
+			"bridgeLimitation": "Q-ow9W_bridgeLimitation",
+			"iconButton": "Q-ow9W_iconButton",
+			"recentProjects": "Q-ow9W_recentProjects",
+			"targetBar": "Q-ow9W_targetBar",
+			"iframe": "Q-ow9W_iframe",
+			"panel": "Q-ow9W_panel"
 		};
 		//#endregion
 		//#region src/client/LabelStudioPanel.tsx
 		/** Render the iframe only after first open and retain it while hidden. */
-		function LabelStudioPanel({ useLabelStudioPanel, useLabelStudioContext, baseUrl, open, width, close, reload, openExternal, confirmApplied, selectTarget, t }) {
+		function LabelStudioPanel({ useLabelStudioPanel, useLabelStudioContext, baseUrl, open, width, close, reload, openExternal, confirmApplied, selectTarget, selectPage, t }) {
 			const state = useLabelStudioPanel((snapshot) => snapshot);
 			const context = useLabelStudioContext((snapshot) => snapshot);
 			const [projectId, setProjectId] = (0, react.useState)("");
@@ -1269,8 +1510,7 @@ window.__ModuleLoader__.load({
 			(0, react.useEffect)(() => {
 				if (!fullscreen) return;
 				const onKeyDown = (event) => {
-					if (event.key !== "Escape") return;
-					setFullscreen(false);
+					if (event.key === "Escape") setFullscreen(false);
 				};
 				window.addEventListener("keydown", onKeyDown);
 				return () => {
@@ -1316,15 +1556,8 @@ window.__ModuleLoader__.load({
 										width: "16",
 										height: "16",
 										"aria-hidden": true,
-										children: fullscreen ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
-											d: "M8 4v4H4M12 4v4h4M8 16v-4H4M12 16v-4h4",
-											fill: "none",
-											stroke: "currentColor",
-											strokeWidth: "1.5",
-											strokeLinecap: "round",
-											strokeLinejoin: "round"
-										}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
-											d: "M8 4H4v4M12 4h4v4M8 16H4v-4M12 16h4v-4",
+										children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
+											d: fullscreen ? "M8 4v4H4M12 4v4h4M8 16v-4H4M12 16v-4h4" : "M8 4H4v4M12 4h4v4M8 16H4v-4M12 16h4v-4",
 											fill: "none",
 											stroke: "currentColor",
 											strokeWidth: "1.5",
@@ -1454,6 +1687,43 @@ window.__ModuleLoader__.load({
 							})
 						]
 					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: LabelStudioPanel_module_css_default.contextBar,
+						children: [
+							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+								className: LabelStudioPanel_module_css_default.currentPage,
+								children: [
+									t("panel.currentPage"),
+									": ",
+									pageName(context.sessionContext.page, t)
+								]
+							}),
+							context.sessionContext.recentProjects.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("nav", {
+								className: LabelStudioPanel_module_css_default.recentProjects,
+								"aria-label": t("panel.recentProjects"),
+								children: context.sessionContext.recentProjects.map((project) => {
+									const deleted = project.availability === "deleted";
+									const label = `${t("panel.project")} ${String(project.projectId)}${deleted ? ` (${t("panel.deleted")})` : ""}`;
+									return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+										type: "button",
+										disabled: deleted,
+										"aria-label": label,
+										onClick: () => {
+											selectPage({
+												view: "project",
+												projectId: project.projectId
+											});
+										},
+										children: label
+									}, project.projectId);
+								})
+							}),
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+								className: LabelStudioPanel_module_css_default.bridgeLimitation,
+								children: t("panel.bridgeLimitation")
+							})
+						]
+					}),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("iframe", {
 						className: LabelStudioPanel_module_css_default.iframe,
 						src: state.targetUrl ?? baseUrl,
@@ -1462,6 +1732,12 @@ window.__ModuleLoader__.load({
 					}, state.reloadRevision)
 				]
 			});
+		}
+		function pageName(page, t) {
+			if (page.view === "projects") return t("panel.projects");
+			if (page.view === "project") return `${t("panel.project")} ${String(page.projectId)}`;
+			const annotation = page.annotationId === void 0 ? "" : ` / ${t("panel.annotationId")} ${String(page.annotationId)}`;
+			return `${t("panel.project")} ${String(page.projectId)} / ${t("panel.taskId")} ${String(page.taskId)}${annotation}`;
 		}
 		/** Viewport width that activates narrow sidebar behavior. */
 		const SIDEBAR_AUTO_COLLAPSE = 1024;
@@ -1524,8 +1800,8 @@ window.__ModuleLoader__.load({
 			};
 		}
 		//#endregion
-		//#region \0dsh-css:LabelStudioRoot.module.css.mjs
-		const css = ".KcRxUa_frame{background:var(--dsw-alias-bg-base);height:100%;transition:grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);grid-template-rows:100%;display:grid;position:relative;overflow:hidden}.KcRxUa_frame[data-dragging]{transition:none}.KcRxUa_sidebarCol{border-right:1px solid var(--dsw-alias-border-l1);background:var(--dsw-specific-sidebar-fill);min-width:0;overflow:hidden}.KcRxUa_conversationCol{flex-direction:column;min-width:0;display:flex;overflow:hidden}.KcRxUa_detailsCol{border-left:1px solid var(--dsw-alias-border-l2);min-width:0;overflow:hidden}.KcRxUa_frame[data-details-collapsed] .KcRxUa_detailsCol{border-left:0}.KcRxUa_overlayLayer{z-index:20;pointer-events:none;position:absolute;inset:0}.KcRxUa_overlayLayer>*{pointer-events:auto}.KcRxUa_handle{z-index:2;cursor:col-resize;touch-action:none;width:8px;transition:left var(--ds-transition-duration-slow) var(--ds-ease-in-out);margin-left:-4px;position:absolute;top:0;bottom:0}.KcRxUa_frame[data-dragging] .KcRxUa_handle{transition:none}@media (prefers-reduced-motion:reduce){.KcRxUa_frame,.KcRxUa_handle{transition:none}}";
+		//#region \0dsh-label-studio-css:/Users/xinlongzhang/PycharmProjects/dsh-label-studio-plugin-package/packages/client-ui/src/client/layout/LabelStudioRoot.module.css.mjs
+		const css = ".STqelW_frame{background:var(--dsw-alias-bg-base);height:100%;transition:grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);grid-template-rows:100%;display:grid;position:relative;overflow:hidden}.STqelW_frame[data-dragging]{transition:none}.STqelW_sidebarCol{border-right:1px solid var(--dsw-alias-border-l1);background:var(--dsw-specific-sidebar-fill);min-width:0;overflow:hidden}.STqelW_conversationCol{flex-direction:column;min-width:0;display:flex;overflow:hidden}.STqelW_detailsCol{border-left:1px solid var(--dsw-alias-border-l2);min-width:0;overflow:hidden}.STqelW_frame[data-details-collapsed] .STqelW_detailsCol{border-left:0}.STqelW_overlayLayer{z-index:20;pointer-events:none;position:absolute;inset:0}.STqelW_overlayLayer>*{pointer-events:auto}.STqelW_handle{z-index:2;cursor:col-resize;touch-action:none;width:8px;transition:left var(--ds-transition-duration-slow) var(--ds-ease-in-out);margin-left:-4px;position:absolute;top:0;bottom:0}.STqelW_frame[data-dragging] .STqelW_handle{transition:none}@media (prefers-reduced-motion:reduce){.STqelW_frame,.STqelW_handle{transition:none}}";
 		const tagId = "dsh-label-studio-workbench/LabelStudioRoot.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -1535,12 +1811,12 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var LabelStudioRoot_module_css_default = {
-			"frame": "KcRxUa_frame",
-			"conversationCol": "KcRxUa_conversationCol",
-			"detailsCol": "KcRxUa_detailsCol",
-			"handle": "KcRxUa_handle",
-			"sidebarCol": "KcRxUa_sidebarCol",
-			"overlayLayer": "KcRxUa_overlayLayer"
+			"overlayLayer": "STqelW_overlayLayer",
+			"frame": "STqelW_frame",
+			"conversationCol": "STqelW_conversationCol",
+			"sidebarCol": "STqelW_sidebarCol",
+			"detailsCol": "STqelW_detailsCol",
+			"handle": "STqelW_handle"
 		};
 		//#endregion
 		//#region src/client/layout/LabelStudioRoot.tsx
@@ -1598,7 +1874,7 @@ window.__ModuleLoader__.load({
 			});
 		}
 		/** Render the original four child slots and the package-private workbench in one root. */
-		function LabelStudioRoot({ useStore, actions, useSessions, renderSlot, SessionProvider, useLabelStudioPanel, useLabelStudioContext, baseUrl, bindSession, confirmApplied, selectTarget, close, reload, openExternal, t }) {
+		function LabelStudioRoot({ useStore, actions, useSessions, renderSlot, SessionProvider, useLabelStudioPanel, useLabelStudioContext, baseUrl, bindSession, confirmApplied, selectTarget, selectPage, close, reload, openExternal, t }) {
 			const panels = useStore((state) => state);
 			const selectedSession = useSessions((unknownState) => unknownState.current);
 			const liveSession = useSessions((unknownState) => {
@@ -1685,6 +1961,7 @@ window.__ModuleLoader__.load({
 						openExternal,
 						confirmApplied,
 						selectTarget,
+						selectPage,
 						t
 					}),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
@@ -1901,12 +2178,12 @@ window.__ModuleLoader__.load({
 			const sourceId = globalThis.crypto.randomUUID();
 			const contexts = new LabelStudioContextController(bridge, {
 				setOpen,
-				applyTarget: (target) => panel.applyTarget(target),
-				clearTarget: () => {
-					panel.clearTarget();
+				applyPage: (page) => panel.applyPage(page),
+				clearPage: () => {
+					panel.clearPage();
 				},
-				reloadTarget: () => {
-					panel.reloadTarget();
+				reloadPage: () => {
+					panel.reloadPage();
 				}
 			}, sourceId, {
 				contextOpenRetryMs: boot.contextOpenRetryMs,
@@ -1955,7 +2232,8 @@ window.__ModuleLoader__.load({
 							confirmApplied: (revision) => {
 								panel.confirmApplied(revision);
 							},
-							selectTarget: (input) => contexts.selectTarget(parseLabelStudioTargetInput(input)),
+							selectTarget: (input) => contexts.selectPage(parseLabelStudioTargetInput(input)),
+							selectPage: (page) => contexts.selectPage(page),
 							close: () => {
 								setOpen(false);
 							},
@@ -2007,7 +2285,7 @@ window.__ModuleLoader__.load({
 		exports.LabelStudioContextController = LabelStudioContextController;
 		exports.LabelStudioLayoutController = LabelStudioLayoutController;
 		exports.apply = apply;
-		exports.buildLabelStudioTaskUrl = buildLabelStudioTaskUrl;
+		exports.buildLabelStudioPageUrl = buildLabelStudioPageUrl;
 		exports.inject = inject;
 		exports.isLabelStudioBridgeFailure = isLabelStudioBridgeFailure;
 		exports.isLabelStudioPluginFailure = isLabelStudioPluginFailure;

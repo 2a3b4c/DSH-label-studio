@@ -4,15 +4,16 @@ import type { SnapshotStore } from '@deepseek-ai/dsh-client-store';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
 import { type LabelStudioPanelSnapshot } from './panel-state.ts';
 import { type LabelStudioContextSnapshot } from './context-state.ts';
-import { type LabelStudioTargetInput } from './task-url.ts';
+import type { LabelStudioPageContext } from '@deepseek-ai/dsh-label-studio-protocol';
+import { type LabelStudioTargetInput } from './page-url.ts';
 import { type LabelStudioKey } from './locales.ts';
 export { LabelStudioLayoutController } from './layout/service.ts';
 export { isLabelStudioBridgeFailure, isLabelStudioPluginFailure, isLabelStudioTransportUnknown, LabelStudioContextBridge, } from './context-bridge.ts';
 export type { LabelStudioBridgeFailure } from './context-bridge.ts';
-export type { LabelStudioControlledPage, LabelStudioContextSnapshot, LabelStudioSyncStatus, } from './context-state.ts';
+export type { LabelStudioControlledPage, LabelStudioContextSnapshot, LabelStudioSessionContextStatus, LabelStudioSyncStatus, } from './context-state.ts';
 export { LabelStudioContextController } from './context-state.ts';
-export { buildLabelStudioTaskUrl, parseLabelStudioTargetInput } from './task-url.ts';
-export type { LabelStudioTargetInput } from './task-url.ts';
+export { buildLabelStudioPageUrl, parseLabelStudioTargetInput } from './page-url.ts';
+export type { LabelStudioTargetInput } from './page-url.ts';
 export type { LabelStudioPanelSnapshot } from './panel-state.ts';
 export type { LabelStudioKey } from './locales.ts';
 declare global {
@@ -49,6 +50,7 @@ export interface LabelStudioRootInjected {
     bindSession: (sessionId: SessionId | undefined) => void;
     confirmApplied: (navigationRevision: number) => void;
     selectTarget: (input: LabelStudioTargetInput) => Promise<void>;
+    selectPage: (page: LabelStudioPageContext) => Promise<void>;
     close: () => void;
     reload: () => void;
     openExternal: () => void;

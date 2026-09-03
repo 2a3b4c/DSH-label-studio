@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["tests/nodenext-consumer.ts"]
+}
