@@ -1780,6 +1780,9 @@ window.__ModuleLoader__.load({
 			"panel.taskId": "任务 ID",
 			"panel.annotationId": "标注 ID（可选）",
 			"panel.navigate": "定位",
+			"panel.openLocator": "打开定位",
+			"panel.closeLocator": "关闭定位",
+			"panel.contextDetails": "查看会话上下文",
 			"panel.currentPage": "当前位置",
 			"panel.projects": "项目列表",
 			"panel.recentProjects": "最近项目",
@@ -1787,7 +1790,10 @@ window.__ModuleLoader__.load({
 			"panel.deleted": "已删除",
 			"panel.binding": "当前绑定",
 			"panel.unbound": "未绑定",
+			"panel.bound": "已绑定",
+			"panel.pageDiffers": "页面未绑定",
 			"panel.bindingSource": "绑定来源",
+			"panel.syncStatus": "同步状态",
 			"panel.source.tool-result": "工具结果",
 			"panel.source.webhook": "Webhook",
 			"panel.source.current-page": "按需检查",
@@ -1829,6 +1835,9 @@ window.__ModuleLoader__.load({
 			"panel.taskId": "Task ID",
 			"panel.annotationId": "Annotation ID (optional)",
 			"panel.navigate": "Go",
+			"panel.openLocator": "Open locator",
+			"panel.closeLocator": "Close locator",
+			"panel.contextDetails": "View Session context",
 			"panel.currentPage": "Current page",
 			"panel.projects": "Projects",
 			"panel.recentProjects": "Recent projects",
@@ -1836,7 +1845,10 @@ window.__ModuleLoader__.load({
 			"panel.deleted": "deleted",
 			"panel.binding": "Current binding",
 			"panel.unbound": "Unbound",
+			"panel.bound": "Bound",
+			"panel.pageDiffers": "Page not bound",
 			"panel.bindingSource": "Binding source",
+			"panel.syncStatus": "Sync status",
 			"panel.source.tool-result": "Tool result",
 			"panel.source.webhook": "Webhook",
 			"panel.source.current-page": "On-demand inspection",
@@ -1866,7 +1878,7 @@ window.__ModuleLoader__.load({
 		};
 		//#endregion
 		//#region \0dsh-label-studio-css:/Users/xinlongzhang/PycharmProjects/dsh-label-studio-plugin-package/packages/client-ui/src/client/LabelStudioPanel.module.css.mjs
-		const css$1 = ".Q-ow9W_panel{box-sizing:border-box;border-left:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);flex-direction:column;min-width:0;height:100%;display:flex;overflow:hidden}.Q-ow9W_panel[hidden]{display:none}.Q-ow9W_panel[data-fullscreen]{z-index:100;border-left:0;height:100dvh;position:fixed;inset:0;width:100%!important}.Q-ow9W_header{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);flex:none;justify-content:space-between;align-items:center;gap:12px;min-height:44px;padding:0 10px 0 14px;display:flex}.Q-ow9W_title{color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;overflow:hidden}.Q-ow9W_actions{flex:none;gap:2px;display:flex}.Q-ow9W_targetBar{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);grid-template-columns:minmax(64px,.8fr) minmax(64px,.8fr) minmax(64px,.8fr) auto minmax(96px,1.4fr);gap:6px;padding:8px 10px;display:grid}.Q-ow9W_targetBar input,.Q-ow9W_targetBar button{box-sizing:border-box;min-width:0;height:28px}.Q-ow9W_targetBar output{color:var(--dsw-alias-label-secondary);text-overflow:ellipsis;white-space:nowrap;align-self:center;font-size:11px;overflow:hidden}.Q-ow9W_contextBar{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);gap:5px;padding:7px 10px;font-size:11px;display:grid}.Q-ow9W_currentPage{color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.Q-ow9W_contextFacts{flex-wrap:wrap;gap:5px;display:flex}.Q-ow9W_statusBadge{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);border-radius:999px;padding:2px 7px}.Q-ow9W_recentProjects{gap:5px;display:flex;overflow-x:auto}.Q-ow9W_recentProjects button{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);min-height:25px;color:var(--dsw-alias-label-primary);cursor:pointer;border-radius:6px;flex:none;padding:2px 8px}.Q-ow9W_recentProjects button:disabled{color:var(--dsw-alias-label-secondary);cursor:not-allowed;opacity:.65}.Q-ow9W_bridgeLimitation{margin:0;line-height:1.35}.Q-ow9W_iconButton{width:30px;height:30px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;border-radius:8px;place-items:center;padding:0;display:grid}.Q-ow9W_iconButton:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.Q-ow9W_iframe{background:var(--dsw-alias-bg-base);border:0;flex:1;width:100%;min-height:0}";
+		const css$1 = ".Q-ow9W_panel{box-sizing:border-box;border-left:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);flex-direction:column;flex:none;min-width:0;height:100%;display:flex;overflow:hidden}.Q-ow9W_panel[hidden]{display:none}.Q-ow9W_panel[data-fullscreen]{z-index:100;border-left:0;height:100dvh;position:fixed;inset:0;width:100%!important}.Q-ow9W_header{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);flex-wrap:wrap;flex:none;align-items:center;gap:6px;padding:6px 10px 6px 14px;display:flex}.Q-ow9W_title{min-width:0;color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;flex:0 auto;font-size:13px;font-weight:500;overflow:hidden}.Q-ow9W_actions{flex:none;order:3;gap:2px;display:flex}.Q-ow9W_compactBar{display:contents}.Q-ow9W_contextSummary{min-width:0;color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit;text-align:left;background:0 0;border:0;border-radius:7px;flex:1;align-items:center;gap:7px;padding:7px 8px;display:flex}.Q-ow9W_contextSummary:hover,.Q-ow9W_locatorButton:hover{background:var(--dsw-alias-interactive-bg-hover)}.Q-ow9W_summaryText{text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;font-size:11px;font-weight:500;overflow:hidden}.Q-ow9W_chevron{color:var(--dsw-alias-label-secondary);flex:none;transition:transform .16s}.Q-ow9W_contextSummary[aria-expanded=true] .Q-ow9W_chevron{transform:rotate(180deg)}.Q-ow9W_compactActions{flex:0 auto;order:2;align-items:center;gap:3px;min-width:0;display:flex}.Q-ow9W_healthIndicator{min-width:0;color:var(--dsw-alias-label-secondary);white-space:nowrap;border-radius:999px;flex:0 auto;justify-content:center;align-items:center;gap:5px;padding:6px 5px;font-size:10px;display:inline-flex}.Q-ow9W_healthIndicator>span:not(.Q-ow9W_statusDot){text-overflow:ellipsis;min-width:0;overflow:hidden}.Q-ow9W_healthIndicator[data-tone=warning]{color:#9a6519;background:#b7791f1a}.Q-ow9W_statusDot{background:currentColor;border-radius:50%;flex:none;width:6px;height:6px}.Q-ow9W_contextSummary>.Q-ow9W_statusDot[data-tone=good],.Q-ow9W_healthIndicator[data-tone=good]{color:var(--dsw-alias-label-primary)}.Q-ow9W_contextSummary>.Q-ow9W_statusDot[data-tone=warning]{color:#9a6519}.Q-ow9W_locatorButton{color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit;background:0 0;border:0;border-radius:7px;align-items:center;gap:5px;padding:7px 8px;font-size:11px;display:inline-flex}.Q-ow9W_popover{box-sizing:border-box;border-top:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);flex:1 0 100%;order:4;display:flex}.Q-ow9W_locatorPopover{flex-wrap:wrap;align-items:end;gap:8px;padding:10px 0 4px}.Q-ow9W_locatorPopover label{min-width:0;color:var(--dsw-alias-label-secondary);flex-direction:column;flex:1 1 0;gap:4px;font-size:10px;display:flex}.Q-ow9W_locatorPopover input,.Q-ow9W_locatorPopover button{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);min-width:0;color:var(--dsw-alias-label-primary);font:inherit;border-radius:6px}.Q-ow9W_locatorPopover input{padding:6px 7px}.Q-ow9W_locatorPopover button{cursor:pointer;flex:none;padding:6px 10px}.Q-ow9W_locatorPopover output{color:#9a6519;flex:1 0 100%;font-size:11px}.Q-ow9W_contextPopover{color:var(--dsw-alias-label-secondary);flex-direction:column;gap:6px;padding:10px 0 4px;font-size:11px}.Q-ow9W_detailRow{justify-content:space-between;gap:14px;min-width:0;display:flex}.Q-ow9W_detailRow strong{color:var(--dsw-alias-label-primary);text-align:right;text-overflow:ellipsis;white-space:nowrap;font-weight:500;overflow:hidden}.Q-ow9W_recentProjects{gap:5px;display:flex;overflow-x:auto}.Q-ow9W_recentProjects button{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);min-height:25px;color:var(--dsw-alias-label-primary);cursor:pointer;border-radius:6px;flex:none;padding:2px 8px}.Q-ow9W_recentProjects button:disabled{color:var(--dsw-alias-label-secondary);cursor:not-allowed;opacity:.65}.Q-ow9W_bridgeLimitation{border-top:1px solid var(--dsw-alias-border-l2);margin:2px 0 0;padding-top:7px;line-height:1.35}.Q-ow9W_iconButton{width:30px;height:30px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;border-radius:8px;place-items:center;padding:0;display:grid}.Q-ow9W_iconButton:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.Q-ow9W_iframe{background:var(--dsw-alias-bg-base);border:0;flex:1;width:100%;min-height:0}";
 		const tagId$1 = "dsh-label-studio-workbench/LabelStudioPanel.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -1876,19 +1888,26 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var LabelStudioPanel_module_css_default = {
-			"statusBadge": "Q-ow9W_statusBadge",
-			"contextFacts": "Q-ow9W_contextFacts",
-			"iconButton": "Q-ow9W_iconButton",
-			"header": "Q-ow9W_header",
 			"panel": "Q-ow9W_panel",
+			"chevron": "Q-ow9W_chevron",
+			"header": "Q-ow9W_header",
+			"locatorPopover": "Q-ow9W_locatorPopover",
+			"iconButton": "Q-ow9W_iconButton",
 			"iframe": "Q-ow9W_iframe",
-			"targetBar": "Q-ow9W_targetBar",
-			"actions": "Q-ow9W_actions",
-			"contextBar": "Q-ow9W_contextBar",
-			"currentPage": "Q-ow9W_currentPage",
+			"summaryText": "Q-ow9W_summaryText",
+			"compactBar": "Q-ow9W_compactBar",
+			"healthIndicator": "Q-ow9W_healthIndicator",
+			"compactActions": "Q-ow9W_compactActions",
+			"detailRow": "Q-ow9W_detailRow",
+			"contextSummary": "Q-ow9W_contextSummary",
 			"title": "Q-ow9W_title",
+			"locatorButton": "Q-ow9W_locatorButton",
+			"contextPopover": "Q-ow9W_contextPopover",
 			"recentProjects": "Q-ow9W_recentProjects",
-			"bridgeLimitation": "Q-ow9W_bridgeLimitation"
+			"bridgeLimitation": "Q-ow9W_bridgeLimitation",
+			"popover": "Q-ow9W_popover",
+			"statusDot": "Q-ow9W_statusDot",
+			"actions": "Q-ow9W_actions"
 		};
 		//#endregion
 		//#region src/client/LabelStudioPanel.tsx
@@ -1901,20 +1920,46 @@ window.__ModuleLoader__.load({
 			const [annotationId, setAnnotationId] = (0, react.useState)("");
 			const [inputError, setInputError] = (0, react.useState)();
 			const [fullscreen, setFullscreen] = (0, react.useState)(false);
+			const [locatorOpen, setLocatorOpen] = (0, react.useState)(false);
+			const [detailsOpen, setDetailsOpen] = (0, react.useState)(false);
 			const recentProjects = context.sessionContext.binding.recentProjects.length > 0 ? context.sessionContext.binding.recentProjects : context.sessionContext.recentProjects;
+			const bindingTarget = context.sessionContext.binding.target;
+			const bindingMatches = bindingTarget !== void 0 && pageMatchesBinding(context.sessionContext.page, bindingTarget);
+			const bindingStatus = bindingTarget === void 0 ? t("panel.unbound") : bindingMatches ? t("panel.bound") : t("panel.pageDiffers");
+			const inspectionLabel = t(`panel.inspection.${context.inspectionStatus}`);
+			const webhookLabel = `${t(`panel.webhook.${context.webhookStatus}`)}${context.webhookUnassigned ? ` · ${t("panel.webhook.unassigned")}` : ""}`;
+			const inspectionAttention = !["idle", "ready"].includes(context.inspectionStatus);
+			const webhookAttention = context.webhookStatus !== "ready" || context.webhookUnassigned;
 			(0, react.useEffect)(() => {
-				if (!open && fullscreen) setFullscreen(false);
-			}, [fullscreen, open]);
+				if (!open) {
+					if (fullscreen) setFullscreen(false);
+					if (locatorOpen) setLocatorOpen(false);
+					if (detailsOpen) setDetailsOpen(false);
+				}
+			}, [
+				detailsOpen,
+				fullscreen,
+				locatorOpen,
+				open
+			]);
 			(0, react.useEffect)(() => {
-				if (!fullscreen) return;
+				if (!fullscreen && !locatorOpen && !detailsOpen) return;
 				const onKeyDown = (event) => {
-					if (event.key === "Escape") setFullscreen(false);
+					if (event.key === "Escape") {
+						setLocatorOpen(false);
+						setDetailsOpen(false);
+						setFullscreen(false);
+					}
 				};
 				window.addEventListener("keydown", onKeyDown);
 				return () => {
 					window.removeEventListener("keydown", onKeyDown);
 				};
-			}, [fullscreen]);
+			}, [
+				detailsOpen,
+				fullscreen,
+				locatorOpen
+			]);
 			(0, react.useLayoutEffect)(() => {
 				if (state.targetUrl !== void 0) confirmApplied(state.navigationRevision);
 			}, [
@@ -1930,14 +1975,212 @@ window.__ModuleLoader__.load({
 				hidden: !open,
 				...!open ? { inert: "" } : {},
 				"data-fullscreen": fullscreen || void 0,
-				style: { width },
-				children: [
-					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("header", {
-						className: LabelStudioPanel_module_css_default.header,
-						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+				style: { flexBasis: width },
+				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("header", {
+					className: LabelStudioPanel_module_css_default.header,
+					children: [
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 							className: LabelStudioPanel_module_css_default.title,
 							children: t("panel.title")
-						}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						}),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+							className: LabelStudioPanel_module_css_default.compactBar,
+							children: [
+								/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+									type: "button",
+									className: LabelStudioPanel_module_css_default.contextSummary,
+									"aria-label": t("panel.contextDetails"),
+									"aria-expanded": detailsOpen,
+									onClick: () => {
+										setDetailsOpen((current) => !current);
+										setLocatorOpen(false);
+									},
+									children: [
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+											className: LabelStudioPanel_module_css_default.statusDot,
+											"data-tone": bindingTarget === void 0 ? "muted" : bindingMatches ? "good" : "warning"
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+											className: LabelStudioPanel_module_css_default.summaryText,
+											children: [
+												pageName(context.sessionContext.page, t),
+												" · ",
+												bindingStatus
+											]
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("svg", {
+											className: LabelStudioPanel_module_css_default.chevron,
+											viewBox: "0 0 16 16",
+											width: "14",
+											height: "14",
+											"aria-hidden": true,
+											children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
+												d: "m5 6 3 3 3-3",
+												fill: "none",
+												stroke: "currentColor",
+												strokeWidth: "1.5",
+												strokeLinecap: "round",
+												strokeLinejoin: "round"
+											})
+										})
+									]
+								}),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+									className: LabelStudioPanel_module_css_default.compactActions,
+									children: [
+										/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+											className: LabelStudioPanel_module_css_default.healthIndicator,
+											"data-tone": inspectionTone(context.inspectionStatus),
+											"aria-label": `${t("panel.inspection")}: ${inspectionLabel}`,
+											title: `${t("panel.inspection")}: ${inspectionLabel}`,
+											children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { className: LabelStudioPanel_module_css_default.statusDot }), inspectionAttention && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: inspectionLabel })]
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+											className: LabelStudioPanel_module_css_default.healthIndicator,
+											"data-tone": webhookAttention ? "warning" : "good",
+											"aria-label": `${t("panel.webhook")}: ${webhookLabel}`,
+											title: `${t("panel.webhook")}: ${webhookLabel}`,
+											children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { className: LabelStudioPanel_module_css_default.statusDot }), webhookAttention && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: webhookLabel })]
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+											type: "button",
+											className: LabelStudioPanel_module_css_default.locatorButton,
+											"aria-label": locatorOpen ? t("panel.closeLocator") : t("panel.openLocator"),
+											"aria-expanded": locatorOpen,
+											onClick: () => {
+												setLocatorOpen((current) => !current);
+												setDetailsOpen(false);
+												setInputError(void 0);
+											},
+											children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("svg", {
+												viewBox: "0 0 16 16",
+												width: "14",
+												height: "14",
+												"aria-hidden": true,
+												children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("circle", {
+													cx: "8",
+													cy: "8",
+													r: "2.5",
+													fill: "none",
+													stroke: "currentColor",
+													strokeWidth: "1.4"
+												}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", {
+													d: "M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2",
+													fill: "none",
+													stroke: "currentColor",
+													strokeWidth: "1.4",
+													strokeLinecap: "round"
+												})]
+											}), t("panel.navigate")]
+										})
+									]
+								}),
+								locatorOpen && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("form", {
+									className: `${LabelStudioPanel_module_css_default.popover} ${LabelStudioPanel_module_css_default.locatorPopover}`,
+									"aria-label": t("panel.openLocator"),
+									onSubmit: (event) => {
+										event.preventDefault();
+										setInputError(void 0);
+										selectTarget({
+											projectId,
+											taskId,
+											...annotationId === "" ? {} : { annotationId }
+										}).then(() => {
+											setLocatorOpen(false);
+										}).catch((error) => {
+											setInputError(error instanceof Error ? error.message : String(error));
+										});
+									},
+									children: [
+										/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("panel.projectId") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
+											"aria-label": t("panel.projectId"),
+											value: projectId,
+											onChange: (event) => {
+												setProjectId(event.currentTarget.value);
+											}
+										})] }),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("panel.taskId") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
+											"aria-label": t("panel.taskId"),
+											value: taskId,
+											onChange: (event) => {
+												setTaskId(event.currentTarget.value);
+											}
+										})] }),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("panel.annotationId") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
+											"aria-label": t("panel.annotationId"),
+											value: annotationId,
+											onChange: (event) => {
+												setAnnotationId(event.currentTarget.value);
+											}
+										})] }),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+											type: "submit",
+											children: t("panel.navigate")
+										}),
+										(inputError ?? context.error) !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("output", {
+											"aria-live": "polite",
+											children: inputError ?? context.error
+										})
+									]
+								}),
+								detailsOpen && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+									className: `${LabelStudioPanel_module_css_default.popover} ${LabelStudioPanel_module_css_default.contextPopover}`,
+									role: "region",
+									"aria-label": t("panel.contextDetails"),
+									children: [
+										/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+											className: LabelStudioPanel_module_css_default.detailRow,
+											children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("panel.currentPage") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: pageName(context.sessionContext.page, t) })]
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+											className: LabelStudioPanel_module_css_default.detailRow,
+											children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("panel.binding") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: bindingName(bindingTarget, t) })]
+										}),
+										context.sessionContext.binding.source !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+											className: LabelStudioPanel_module_css_default.detailRow,
+											children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("panel.bindingSource") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: t(`panel.source.${context.sessionContext.binding.source}`) })]
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+											className: LabelStudioPanel_module_css_default.detailRow,
+											children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("panel.syncStatus") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: t(`status.${context.status}`) })]
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+											className: LabelStudioPanel_module_css_default.detailRow,
+											children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("panel.inspection") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: inspectionLabel })]
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+											className: LabelStudioPanel_module_css_default.detailRow,
+											children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: t("panel.webhook") }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: webhookLabel })]
+										}),
+										recentProjects.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("nav", {
+											className: LabelStudioPanel_module_css_default.recentProjects,
+											"aria-label": t("panel.recentProjects"),
+											children: recentProjects.map((project) => {
+												const deleted = project.availability === "deleted";
+												const label = `${t("panel.project")} ${String(project.projectId)}${deleted ? ` (${t("panel.deleted")})` : ""}`;
+												return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+													type: "button",
+													disabled: deleted,
+													"aria-label": label,
+													onClick: () => {
+														selectPage({
+															view: "project",
+															projectId: project.projectId
+														});
+													},
+													children: label
+												}, project.projectId);
+											})
+										}),
+										/* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+											className: LabelStudioPanel_module_css_default.bridgeLimitation,
+											children: t("panel.bridgeLimitation")
+										})
+									]
+								})
+							]
+						}),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 							className: LabelStudioPanel_module_css_default.actions,
 							children: [
 								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
@@ -2038,133 +2281,15 @@ window.__ModuleLoader__.load({
 									})
 								})
 							]
-						})]
-					}),
-					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("form", {
-						className: LabelStudioPanel_module_css_default.targetBar,
-						onSubmit: (event) => {
-							event.preventDefault();
-							setInputError(void 0);
-							selectTarget({
-								projectId,
-								taskId,
-								...annotationId === "" ? {} : { annotationId }
-							}).catch((error) => {
-								setInputError(error instanceof Error ? error.message : String(error));
-							});
-						},
-						children: [
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
-								"aria-label": t("panel.projectId"),
-								value: projectId,
-								onChange: (event) => {
-									setProjectId(event.currentTarget.value);
-								}
-							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
-								"aria-label": t("panel.taskId"),
-								value: taskId,
-								onChange: (event) => {
-									setTaskId(event.currentTarget.value);
-								}
-							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
-								"aria-label": t("panel.annotationId"),
-								value: annotationId,
-								onChange: (event) => {
-									setAnnotationId(event.currentTarget.value);
-								}
-							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-								type: "submit",
-								children: t("panel.navigate")
-							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("output", {
-								"aria-live": "polite",
-								children: inputError ?? context.error ?? t(`status.${context.status}`)
-							})
-						]
-					}),
-					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-						className: LabelStudioPanel_module_css_default.contextBar,
-						children: [
-							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-								className: LabelStudioPanel_module_css_default.currentPage,
-								children: [
-									t("panel.currentPage"),
-									": ",
-									pageName(context.sessionContext.page, t)
-								]
-							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-								className: LabelStudioPanel_module_css_default.currentPage,
-								children: [
-									t("panel.binding"),
-									": ",
-									bindingName(context.sessionContext.binding.target, t)
-								]
-							}),
-							context.sessionContext.binding.source !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-								className: LabelStudioPanel_module_css_default.currentPage,
-								children: [
-									t("panel.bindingSource"),
-									": ",
-									t(`panel.source.${context.sessionContext.binding.source}`)
-								]
-							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-								className: LabelStudioPanel_module_css_default.contextFacts,
-								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-									className: LabelStudioPanel_module_css_default.statusBadge,
-									children: [
-										t("panel.inspection"),
-										": ",
-										t(`panel.inspection.${context.inspectionStatus}`)
-									]
-								}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-									className: LabelStudioPanel_module_css_default.statusBadge,
-									children: [
-										t("panel.webhook"),
-										": ",
-										t(`panel.webhook.${context.webhookStatus}`),
-										context.webhookUnassigned ? ` · ${t("panel.webhook.unassigned")}` : ""
-									]
-								})]
-							}),
-							recentProjects.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("nav", {
-								className: LabelStudioPanel_module_css_default.recentProjects,
-								"aria-label": t("panel.recentProjects"),
-								children: recentProjects.map((project) => {
-									const deleted = project.availability === "deleted";
-									const label = `${t("panel.project")} ${String(project.projectId)}${deleted ? ` (${t("panel.deleted")})` : ""}`;
-									return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-										type: "button",
-										disabled: deleted,
-										"aria-label": label,
-										onClick: () => {
-											selectPage({
-												view: "project",
-												projectId: project.projectId
-											});
-										},
-										children: label
-									}, project.projectId);
-								})
-							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
-								className: LabelStudioPanel_module_css_default.bridgeLimitation,
-								children: t("panel.bridgeLimitation")
-							})
-						]
-					}),
-					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("iframe", {
-						ref: attachFrame,
-						className: LabelStudioPanel_module_css_default.iframe,
-						src: state.targetUrl ?? baseUrl,
-						title: t("panel.title"),
-						allow: "clipboard-read; clipboard-write"
-					}, state.reloadRevision)
-				]
+						})
+					]
+				}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("iframe", {
+					ref: attachFrame,
+					className: LabelStudioPanel_module_css_default.iframe,
+					src: state.targetUrl ?? baseUrl,
+					title: t("panel.title"),
+					allow: "clipboard-read; clipboard-write"
+				}, state.reloadRevision)]
 			});
 		}
 		function pageName(page, t) {
@@ -2178,6 +2303,15 @@ window.__ModuleLoader__.load({
 			if (target.kind === "project") return `${t("panel.project")} ${String(target.projectId)}`;
 			const annotation = target.annotationId === void 0 ? "" : ` / ${t("panel.annotationId")} ${String(target.annotationId)}`;
 			return `${t("panel.project")} ${String(target.projectId)} / ${t("panel.taskId")} ${String(target.taskId)}${annotation}`;
+		}
+		function pageMatchesBinding(page, target) {
+			if (target.kind === "project") return page.view === "project" && page.projectId === target.projectId;
+			return page.view === "task" && page.projectId === target.projectId && page.taskId === target.taskId && page.annotationId === target.annotationId;
+		}
+		function inspectionTone(status) {
+			if (status === "ready") return "good";
+			if (status === "idle") return "muted";
+			return "warning";
 		}
 		/** Viewport width that activates narrow sidebar behavior. */
 		const SIDEBAR_AUTO_COLLAPSE = 1024;
@@ -2241,7 +2375,7 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		//#region \0dsh-label-studio-css:/Users/xinlongzhang/PycharmProjects/dsh-label-studio-plugin-package/packages/client-ui/src/client/layout/LabelStudioRoot.module.css.mjs
-		const css = ".STqelW_frame{background:var(--dsw-alias-bg-base);height:100%;transition:grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);grid-template-rows:100%;display:grid;position:relative;overflow:hidden}.STqelW_frame[data-dragging]{transition:none}.STqelW_sidebarCol{border-right:1px solid var(--dsw-alias-border-l1);background:var(--dsw-specific-sidebar-fill);min-width:0;overflow:hidden}.STqelW_conversationCol{flex-direction:column;min-width:0;display:flex;overflow:hidden}.STqelW_detailsCol{border-left:1px solid var(--dsw-alias-border-l2);min-width:0;overflow:hidden}.STqelW_frame[data-details-collapsed] .STqelW_detailsCol{border-left:0}.STqelW_overlayLayer{z-index:20;pointer-events:none;position:absolute;inset:0}.STqelW_overlayLayer>*{pointer-events:auto}.STqelW_handle{z-index:2;cursor:col-resize;touch-action:none;width:8px;transition:left var(--ds-transition-duration-slow) var(--ds-ease-in-out);margin-left:-4px;position:absolute;top:0;bottom:0}.STqelW_frame[data-dragging] .STqelW_handle{transition:none}@media (prefers-reduced-motion:reduce){.STqelW_frame,.STqelW_handle{transition:none}}";
+		const css = ".STqelW_frame{background:var(--dsw-alias-bg-base);height:100%;display:flex;position:relative;overflow:hidden}.STqelW_sidebarCol{border-right:1px solid var(--dsw-alias-border-l1);background:var(--dsw-specific-sidebar-fill);flex:none;min-width:0;overflow:hidden}.STqelW_conversationCol{flex-direction:column;flex:1 1 0;min-width:0;display:flex;overflow:hidden}.STqelW_detailsCol{border-left:1px solid var(--dsw-alias-border-l2);flex:none;min-width:0;overflow:hidden}.STqelW_frame[data-details-collapsed] .STqelW_detailsCol{border-left:0}.STqelW_overlayLayer{z-index:20;pointer-events:none;position:absolute;inset:0}.STqelW_overlayLayer>*{pointer-events:auto}.STqelW_handle{z-index:2;cursor:col-resize;touch-action:none;flex:0 0 8px;align-self:stretch;width:8px;margin-inline:-4px}";
 		const tagId = "dsh-label-studio-workbench/LabelStudioRoot.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -2251,16 +2385,16 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var LabelStudioRoot_module_css_default = {
-			"sidebarCol": "STqelW_sidebarCol",
-			"overlayLayer": "STqelW_overlayLayer",
 			"handle": "STqelW_handle",
-			"detailsCol": "STqelW_detailsCol",
+			"conversationCol": "STqelW_conversationCol",
+			"overlayLayer": "STqelW_overlayLayer",
 			"frame": "STqelW_frame",
-			"conversationCol": "STqelW_conversationCol"
+			"sidebarCol": "STqelW_sidebarCol",
+			"detailsCol": "STqelW_detailsCol"
 		};
 		//#endregion
 		//#region src/client/layout/LabelStudioRoot.tsx
-		function DragHandle({ side, left, onStart, onDrag, onEnd }) {
+		function DragHandle({ side, onStart, onDrag, onEnd }) {
 			const [dragging, setDragging] = (0, react.useState)(false);
 			const origin = (0, react.useRef)(0);
 			const latest = (0, react.useRef)(0);
@@ -2307,7 +2441,6 @@ window.__ModuleLoader__.load({
 				className: LabelStudioRoot_module_css_default.handle,
 				"data-side": side,
 				"data-dragging": dragging || void 0,
-				style: { left },
 				onPointerDown: pointerDown,
 				onPointerMove: pointerMove,
 				onPointerUp: pointerUp
@@ -2373,22 +2506,56 @@ window.__ModuleLoader__.load({
 				"data-workbench-collapsed": columns.workbench === 0 || void 0,
 				"data-sidebar-collapsed": sidebarCollapsed || void 0,
 				"data-dragging": dragging || void 0,
-				style: { gridTemplateColumns: `${columns.sidebar}px minmax(0, 1fr) ${columns.details}px ${columns.workbench}px` },
 				children: [
 					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 						className: LabelStudioRoot_module_css_default.sidebarCol,
+						style: { flexBasis: columns.sidebar },
 						children: renderSlot("sidebar", {
 							collapsed: sidebarCollapsed,
 							width: columns.sidebar
 						})
 					}),
+					!sidebarCollapsed && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(DragHandle, {
+						side: "sidebar",
+						onStart: () => {
+							sidebarBase.current = columnsRef.current.sidebar;
+							setDragging(true);
+						},
+						onDrag: (dx) => {
+							actions.setSidebar(sidebarBase.current + dx);
+						},
+						onEnd: endDrag
+					}),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 						className: LabelStudioRoot_module_css_default.conversationCol,
 						children: renderSlot("conversation", {})
 					}),
+					columns.details > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(DragHandle, {
+						side: "details",
+						onStart: () => {
+							detailsBase.current = columnsRef.current.details;
+							setDragging(true);
+						},
+						onDrag: (dx) => {
+							actions.setDetails(detailsBase.current - dx);
+						},
+						onEnd: endDrag
+					}),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 						className: LabelStudioRoot_module_css_default.detailsCol,
+						style: { flexBasis: columns.details },
 						children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(SessionProvider, { children: renderSlot("details", {}) })
+					}),
+					columns.workbench > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(DragHandle, {
+						side: "workbench",
+						onStart: () => {
+							workbenchBase.current = columnsRef.current.workbench;
+							setDragging(true);
+						},
+						onDrag: (dx) => {
+							actions.setWorkbench(workbenchBase.current - dx);
+						},
+						onEnd: endDrag
 					}),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(LabelStudioPanel, {
 						useLabelStudioPanel,
@@ -2409,42 +2576,6 @@ window.__ModuleLoader__.load({
 						className: LabelStudioRoot_module_css_default.overlayLayer,
 						"data-shell-overlay": true,
 						children: renderSlot("shell.overlay", {})
-					}),
-					!sidebarCollapsed && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(DragHandle, {
-						side: "sidebar",
-						left: columns.sidebar,
-						onStart: () => {
-							sidebarBase.current = columnsRef.current.sidebar;
-							setDragging(true);
-						},
-						onDrag: (dx) => {
-							actions.setSidebar(sidebarBase.current + dx);
-						},
-						onEnd: endDrag
-					}),
-					columns.details > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(DragHandle, {
-						side: "details",
-						left: viewport - columns.workbench - columns.details,
-						onStart: () => {
-							detailsBase.current = columnsRef.current.details;
-							setDragging(true);
-						},
-						onDrag: (dx) => {
-							actions.setDetails(detailsBase.current - dx);
-						},
-						onEnd: endDrag
-					}),
-					columns.workbench > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(DragHandle, {
-						side: "workbench",
-						left: viewport - columns.workbench,
-						onStart: () => {
-							workbenchBase.current = columnsRef.current.workbench;
-							setDragging(true);
-						},
-						onDrag: (dx) => {
-							actions.setWorkbench(workbenchBase.current - dx);
-						},
-						onEnd: endDrag
 					})
 				]
 			});
@@ -2613,11 +2744,17 @@ window.__ModuleLoader__.load({
 			const baseUrl = boot.frameBaseUrl;
 			const layout = new LabelStudioLayoutController();
 			const panel = new LabelStudioPanelController(boot.frameBaseUrl, boot.baseUrl);
-			const setOpen = (open) => {
+			let activeSessionId;
+			const sessionVisibility = /* @__PURE__ */ new Map();
+			const applyVisibility = (open) => {
 				if (panel.store.getSnapshot().open === open) return;
 				panel.setOpen(open);
 				if (open) layout.openWorkbench();
 				else layout.closeWorkbench();
+			};
+			const setOpen = (open) => {
+				if (activeSessionId !== void 0) sessionVisibility.set(activeSessionId, open);
+				applyVisibility(open);
 			};
 			const bridge = new LabelStudioContextBridge({
 				connection: ctx.get("connection"),
@@ -2641,6 +2778,13 @@ window.__ModuleLoader__.load({
 				eventHistorySize: boot.eventHistorySize,
 				...boot.webhookStatus === void 0 ? {} : { webhookStatus: boot.webhookStatus }
 			});
+			const bindSession = (sessionId) => {
+				if (activeSessionId !== sessionId) {
+					activeSessionId = sessionId;
+					applyVisibility(sessionId !== void 0 && sessionVisibility.get(sessionId) === true);
+				}
+				contexts.bindSession(sessionId);
+			};
 			ctx.effect(() => ctx.locale.register(NS, {
 				zh,
 				en
@@ -2677,9 +2821,7 @@ window.__ModuleLoader__.load({
 								labelStudioContext: contexts.store
 							},
 							baseUrl,
-							bindSession: (sessionId) => {
-								contexts.bindSession(sessionId);
-							},
+							bindSession,
 							confirmApplied: (revision) => {
 								panel.confirmApplied(revision);
 							},

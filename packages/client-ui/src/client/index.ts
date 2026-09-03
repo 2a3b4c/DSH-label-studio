@@ -123,11 +123,17 @@ export function apply(ctx: ClientContext): void {
   const baseUrl = boot.frameBaseUrl
   const layout = new LabelStudioLayoutController()
   const panel = new LabelStudioPanelController(boot.frameBaseUrl, boot.baseUrl)
-  const setOpen = (open: boolean): void => {
+  let activeSessionId: SessionId | undefined
+  const sessionVisibility = new Map<SessionId, boolean>()
+  const applyVisibility = (open: boolean): void => {
     if (panel.store.getSnapshot().open === open) return
     panel.setOpen(open)
     if (open) layout.openWorkbench()
     else layout.closeWorkbench()
+  }
+  const setOpen = (open: boolean): void => {
+    if (activeSessionId !== undefined) sessionVisibility.set(activeSessionId, open)
+    applyVisibility(open)
   }
   const connection = ctx.get('connection') as ConnectionHandle
   const bridge = new LabelStudioContextBridge({ connection, channel: '/label-studio' })
@@ -151,6 +157,13 @@ export function apply(ctx: ClientContext): void {
     eventHistorySize: boot.eventHistorySize,
     ...(boot.webhookStatus === undefined ? {} : { webhookStatus: boot.webhookStatus }),
   })
+  const bindSession = (sessionId: SessionId | undefined): void => {
+    if (activeSessionId !== sessionId) {
+      activeSessionId = sessionId
+      applyVisibility(sessionId !== undefined && sessionVisibility.get(sessionId) === true)
+    }
+    contexts.bindSession(sessionId)
+  }
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'label-studio: dictionaries')
   ctx.effect(() => {
@@ -170,7 +183,7 @@ export function apply(ctx: ClientContext): void {
         return {
           hooks: { labelStudioPanel: panel.store, labelStudioContext: contexts.store },
           baseUrl,
-          bindSession: (sessionId) => { contexts.bindSession(sessionId) },
+          bindSession,
           confirmApplied: (revision) => { panel.confirmApplied(revision) },
           attachFrame: (frame) => {
             currentPages.cancel()

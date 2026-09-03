@@ -127,6 +127,36 @@ describe('Label Studio browser assembly', () => {
     await b.dispose()
   })
 
+  it('keeps workbench visibility per Session and defaults a new Session closed', async () => {
+    const b = bench()
+    const root = b.slots.entries('root')[0]!
+    const actions = {
+      setSidebar: vi.fn(), setDetails: vi.fn(), setWorkbench: vi.fn(), toggleSidebar: vi.fn(), setNarrow: vi.fn(),
+      openDetails: vi.fn(), closeDetails: vi.fn(), openWorkbench: vi.fn(), closeWorkbench: vi.fn(),
+    }
+    const rootFace = root.inject!(actions as never) as {
+      bindSession: (sessionId: string | undefined) => void
+      hooks: { labelStudioPanel: { getSnapshot: () => { open: boolean } } }
+    }
+    const action = b.slots.entries('conversation.session.header.actions')[0]!
+    const actionFace = action.inject!() as { toggle: () => void }
+
+    rootFace.bindSession('session-a')
+    actionFace.toggle()
+    expect(rootFace.hooks.labelStudioPanel.getSnapshot().open).toBe(true)
+
+    rootFace.bindSession('session-b')
+    expect(rootFace.hooks.labelStudioPanel.getSnapshot().open).toBe(false)
+
+    rootFace.bindSession('session-a')
+    expect(rootFace.hooks.labelStudioPanel.getSnapshot().open).toBe(true)
+    rootFace.bindSession('session-b')
+    expect(rootFace.hooks.labelStudioPanel.getSnapshot().open).toBe(false)
+    expect(actions.closeWorkbench).toHaveBeenCalledTimes(2)
+    expect(actions.openWorkbench).toHaveBeenCalledTimes(2)
+    await b.dispose()
+  })
+
   it('seeds the Client context with the Host Webhook availability', async () => {
     const b = bench()
     const root = b.slots.entries('root')[0]!

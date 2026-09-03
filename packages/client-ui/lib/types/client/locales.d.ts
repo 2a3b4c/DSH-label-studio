@@ -14,6 +14,9 @@ export declare const zh: {
     readonly 'panel.taskId': "任务 ID";
     readonly 'panel.annotationId': "标注 ID（可选）";
     readonly 'panel.navigate': "定位";
+    readonly 'panel.openLocator': "打开定位";
+    readonly 'panel.closeLocator': "关闭定位";
+    readonly 'panel.contextDetails': "查看会话上下文";
     readonly 'panel.currentPage': "当前位置";
     readonly 'panel.projects': "项目列表";
     readonly 'panel.recentProjects': "最近项目";
@@ -21,7 +24,10 @@ export declare const zh: {
     readonly 'panel.deleted': "已删除";
     readonly 'panel.binding': "当前绑定";
     readonly 'panel.unbound': "未绑定";
+    readonly 'panel.bound': "已绑定";
+    readonly 'panel.pageDiffers': "页面未绑定";
     readonly 'panel.bindingSource': "绑定来源";
+    readonly 'panel.syncStatus': "同步状态";
     readonly 'panel.source.tool-result': "工具结果";
     readonly 'panel.source.webhook': "Webhook";
     readonly 'panel.source.current-page': "按需检查";

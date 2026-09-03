@@ -6,9 +6,12 @@ const css = readFileSync(fileURLToPath(new URL('../src/client/layout/LabelStudio
 const panelCss = readFileSync(fileURLToPath(new URL('../src/client/LabelStudioPanel.module.css', import.meta.url)), 'utf8')
 
 describe('replacement root CSS behavior', () => {
-  it('pauses track and handle transitions during drag and reduced motion', () => {
-    expect(css).toMatch(/\[data-dragging\][^{]*\{[^}]*transition:\s*none/s)
-    expect(css).toMatch(/prefers-reduced-motion:\s*reduce[\s\S]*transition:\s*none/)
+  it('uses flexible columns and keeps drag handles in normal flow', () => {
+    expect(css).toMatch(/\.frame\s*\{[^}]*display:\s*flex/s)
+    expect(css).not.toMatch(/grid-template-/)
+    expect(css).toMatch(/\.conversationCol\s*\{[^}]*flex:\s*1 1 0/s)
+    expect(css).toMatch(/\.handle\s*\{[^}]*flex:\s*0 0 8px/s)
+    expect(css).not.toMatch(/\.handle\s*\{[^}]*position:/s)
   })
 
   it('keeps the overlay layer click-through while entries opt back in', () => {
@@ -16,8 +19,15 @@ describe('replacement root CSS behavior', () => {
     expect(css).toMatch(/\.overlayLayer\s*>\s*\*\s*\{[^}]*pointer-events:\s*auto/s)
   })
 
-  it('keeps binding and synchronization facts in the existing compact context bar', () => {
-    expect(panelCss).toMatch(/\.contextFacts\s*\{[^}]*display:\s*flex/s)
-    expect(panelCss).toMatch(/\.statusBadge\s*\{[^}]*border-radius:/s)
+  it('keeps context and navigation inside one responsive flex title row', () => {
+    expect(panelCss).toMatch(/\.header\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap/s)
+    expect(panelCss).toMatch(/\.compactBar\s*\{[^}]*display:\s*contents/s)
+    expect(panelCss).not.toMatch(/\.compactBar\s*\{[^}]*border-bottom:/s)
+    expect(panelCss).toMatch(/\.contextSummary\s*\{[^}]*min-width:\s*0/s)
+    expect(panelCss).not.toMatch(/\.healthIndicator\s*\{[^}]*max-width:/s)
+    expect(panelCss).toMatch(/\.popover\s*\{[^}]*display:\s*flex/s)
+    expect(panelCss).not.toMatch(/\.popover\s*\{[^}]*position:/s)
+    expect(panelCss).not.toMatch(/\.locatorPopover\s*\{[^}]*width:/s)
+    expect(panelCss).toMatch(/\.locatorPopover label\s*\{[^}]*flex:\s*1 1 0/s)
   })
 })

@@ -75,7 +75,7 @@ Bundle patch 会在 DSH 启动前读取 `DSH_LABEL_STUDIO_LAUNCH_MODE` 和 `DSH_
 
 ## 浏览器行为
 
-浏览器包向 `conversation.session.header.actions` 注册可叠加操作，并在该 Bundle 生效期间提供唯一活动的 `root` occupant。这个根组件保留原 sidebar、conversation、details 和 overlay 四个 slot，并直接渲染工作台，不新增公共 workbench slot。工作台默认收起；恢复 Session 页面时可以在 hidden、inert 区域挂载 iframe，但不会自动展开右侧栏。用户显式打开后再关闭时 iframe 继续保留，因此重新打开不会重复加载。工作台标题栏的全屏按钮让 Label Studio 覆盖整个 DSH 页面，再次点击或按 `Esc` 恢复原布局；关闭工作台也会退出全屏。重新加载只替换 iframe，**在新窗口打开**使用同一个配置端点，关闭工作台不会中断对话或停止 Label Studio 服务。
+浏览器包向 `conversation.session.header.actions` 注册可叠加操作，并在该 Bundle 生效期间提供唯一活动的 `root` occupant。这个根组件保留原 sidebar、conversation、details 和 overlay 四个 slot，并直接渲染工作台，不新增公共 workbench slot。响应式 Flex 分栏和文档流内的拖拽手柄替代固定 CSS 轨道；保存的数值尺寸仍是可变拖拽偏好，并由实际观测到的视口约束。工作台可见性保存在浏览器内并按选中的 Session 隔离，因此首次进入的 Session 默认收起，返回某个 Session 时恢复它原来的可见状态。恢复 Session 页面时可以在 hidden、inert 区域挂载 iframe，但不会自动展开右侧栏。用户显式打开后再关闭时 iframe 继续保留，因此重新打开不会重复加载。工作台标题栏的全屏按钮让 Label Studio 覆盖整个 DSH 页面，再次点击或按 `Esc` 恢复原布局；关闭工作台也会退出全屏。重新加载只替换 iframe，**在新窗口打开**使用同一个配置端点，关闭工作台不会中断对话或停止 Label Studio 服务。
 
 实际检查确认 Label Studio 1.22.0 的登录页不发送 `X-Frame-Options`，也没有强制执行 `frame-ancestors`。如果其他 Label Studio 部署添加了这类限制，就必须允许 DSH Web origin，或改用新窗口入口。
 
@@ -89,9 +89,9 @@ Host 通过 `ctx.connection.rpc.handle()` 注册 `/label-studio`；DSH `0.1.2-al
 
 Webhook 使用随机独立 secret 认证精确 POST route，并通过持久 owner UUID 只清理本插件创建的注册。Label Studio 1.22 Community 使用项目级 Webhook：插件启动时为已有项目分别注册；annotation 创建或更新在没有既有绑定时，会对每个存活的 DSH iframe 发起一次页面检查，仅当唯一 Session 显示完全相同的 project/task 时建立绑定。已有精确绑定保持不变；task 删除把精确 task binding 降级为 project，annotation 删除不推断 task。`optional` 模式启动失败后，现有 `label_studio_status` 工具会在每次调用时通过同一个幂等注册器重试一次。
 
-浏览器会在 React commit 后绑定当前选中的 Session，打开租约并恢复该 Session 的持久页面；手动页面选择与 Host focus 请求共用一个串行队列。它先应用已经确认的 Label Studio task URL，再发布或确认 target；确认结果不确定时分别保留 observed 和 committed 事件游标；Session 或 Connection 更换时取消当前世代的请求。页面栏会显示同步状态和有界的最近项目列表；deleted 项目仍可见但不可选择。`prediction-created` 事件只有在 task id 与 active target 匹配时才让 iframe 回刷一次；回放重置则让当前 target 回刷一次。boot 投影会提供 `eventHistorySize`、`contextOpenRetryMs` 和 `contextCloseTimeoutMs`，但绝不包含凭据或任务内容。
+浏览器会在 React commit 后绑定当前选中的 Session，打开租约并恢复该 Session 的持久页面；手动页面选择与 Host focus 请求共用一个串行队列。它先应用已经确认的 Label Studio task URL，再发布或确认 target；确认结果不确定时分别保留 observed 和 committed 事件游标；Session 或 Connection 更换时取消当前世代的请求。标题栏概括当前页面与 binding，临时展开的响应式 Flex 抽屉提供导航、同步详情和有界的最近项目列表，只在展开期间占用额外高度；deleted 项目仍可见但不可选择。`prediction-created` 事件只有在 task id 与 active target 匹配时才让 iframe 回刷一次；回放重置则让当前 target 回刷一次。boot 投影会提供 `eventHistorySize`、`contextOpenRetryMs` 和 `contextCloseTimeoutMs`，但绝不包含凭据或任务内容。
 
-上下文栏还会显示持久 binding、来源、最近一次按需检查结果和可选 Webhook 可用状态。被动浏览 iframe 永远不会更新 binding；只有经过验证且成功的工具操作，或唯一匹配的 annotation Webhook 才会更新。已认证但无法唯一归属 Session 的 Webhook 会显示为“未匹配”，且不修改任何 binding。
+正常的页面检查和 Webhook 状态只占用状态圆点；检查中、不可用或“未匹配”状态才显示简短文字，展开上下文后可以查看完整持久 binding 和来源。被动浏览 iframe 永远不会更新 binding；只有经过验证且成功的工具操作，或唯一匹配的 annotation Webhook 才会更新。已认证但无法唯一归属 Session 的 Webhook 会显示为“未匹配”，且不修改任何 binding。
 
 ## 模型体验
 

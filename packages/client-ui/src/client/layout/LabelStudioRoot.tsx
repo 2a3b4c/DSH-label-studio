@@ -26,13 +26,12 @@ interface SessionSelection {
 
 interface DragHandleProps {
   side: 'sidebar' | 'details' | 'workbench'
-  left: number
   onStart: () => void
   onDrag: (dx: number) => void
   onEnd: () => void
 }
 
-function DragHandle({ side, left, onStart, onDrag, onEnd }: DragHandleProps) {
+function DragHandle({ side, onStart, onDrag, onEnd }: DragHandleProps) {
   const [dragging, setDragging] = useState(false)
   const origin = useRef(0)
   const latest = useRef(0)
@@ -73,7 +72,6 @@ function DragHandle({ side, left, onStart, onDrag, onEnd }: DragHandleProps) {
     className={css.handle}
     data-side={side}
     data-dragging={dragging || undefined}
-    style={{ left }}
     onPointerDown={pointerDown}
     onPointerMove={pointerMove}
     onPointerUp={pointerUp}
@@ -146,13 +144,29 @@ export function LabelStudioRoot({
     data-workbench-collapsed={columns.workbench === 0 || undefined}
     data-sidebar-collapsed={sidebarCollapsed || undefined}
     data-dragging={dragging || undefined}
-    style={{ gridTemplateColumns: `${columns.sidebar}px minmax(0, 1fr) ${columns.details}px ${columns.workbench}px` }}
   >
-    <div className={css.sidebarCol}>{renderSlot('sidebar', { collapsed: sidebarCollapsed, width: columns.sidebar })}</div>
+    <div className={css.sidebarCol} style={{ flexBasis: columns.sidebar }}>
+      {renderSlot('sidebar', { collapsed: sidebarCollapsed, width: columns.sidebar })}
+    </div>
+    {!sidebarCollapsed && <DragHandle
+      side="sidebar"
+      onStart={() => { sidebarBase.current = columnsRef.current.sidebar; setDragging(true) }}
+      onDrag={(dx) => { actions.setSidebar(sidebarBase.current + dx) }} onEnd={endDrag}
+    />}
     <div className={css.conversationCol}>{renderSlot('conversation', {})}</div>
-        <div className={css.detailsCol}>
-          <SessionProvider>{renderSlot('details', {})}</SessionProvider>
-        </div>
+    {columns.details > 0 && <DragHandle
+      side="details"
+      onStart={() => { detailsBase.current = columnsRef.current.details; setDragging(true) }}
+      onDrag={(dx) => { actions.setDetails(detailsBase.current - dx) }} onEnd={endDrag}
+    />}
+    <div className={css.detailsCol} style={{ flexBasis: columns.details }}>
+      <SessionProvider>{renderSlot('details', {})}</SessionProvider>
+    </div>
+    {columns.workbench > 0 && <DragHandle
+      side="workbench"
+      onStart={() => { workbenchBase.current = columnsRef.current.workbench; setDragging(true) }}
+      onDrag={(dx) => { actions.setWorkbench(workbenchBase.current - dx) }} onEnd={endDrag}
+    />}
     <LabelStudioPanel
       useLabelStudioPanel={useLabelStudioPanel}
       useLabelStudioContext={useLabelStudioContext}
@@ -169,20 +183,5 @@ export function LabelStudioRoot({
       t={t}
     />
     <div className={css.overlayLayer} data-shell-overlay>{renderSlot('shell.overlay', {})}</div>
-    {!sidebarCollapsed && <DragHandle
-      side="sidebar" left={columns.sidebar}
-      onStart={() => { sidebarBase.current = columnsRef.current.sidebar; setDragging(true) }}
-      onDrag={(dx) => { actions.setSidebar(sidebarBase.current + dx) }} onEnd={endDrag}
-    />}
-    {columns.details > 0 && <DragHandle
-      side="details" left={viewport - columns.workbench - columns.details}
-      onStart={() => { detailsBase.current = columnsRef.current.details; setDragging(true) }}
-      onDrag={(dx) => { actions.setDetails(detailsBase.current - dx) }} onEnd={endDrag}
-    />}
-    {columns.workbench > 0 && <DragHandle
-      side="workbench" left={viewport - columns.workbench}
-      onStart={() => { workbenchBase.current = columnsRef.current.workbench; setDragging(true) }}
-      onDrag={(dx) => { actions.setWorkbench(workbenchBase.current - dx) }} onEnd={endDrag}
-    />}
   </div>
 }

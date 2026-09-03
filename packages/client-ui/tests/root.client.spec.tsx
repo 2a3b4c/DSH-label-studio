@@ -129,8 +129,11 @@ describe('Label Studio replacement root', () => {
     const root = view.container.querySelector('[data-label-studio-root]') as HTMLElement
     viewport = 1500
     act(() => { fireResize?.(); vi.advanceTimersByTime(20) })
-    expect(root.style.gridTemplateColumns).toContain('580px')
+    const panel = root.querySelector('section[aria-label="panel.title"]') as HTMLElement
+    expect(root.style.gridTemplateColumns).toBe('')
+    expect(panel.style.flexBasis).toBe('580px')
     const handle = root.querySelector('[data-side="workbench"]') as HTMLElement
+    expect(handle.style.left).toBe('')
     act(() => { handle.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, clientX: 780, bubbles: true })) })
     expect(root.hasAttribute('data-dragging')).toBe(true)
     act(() => {

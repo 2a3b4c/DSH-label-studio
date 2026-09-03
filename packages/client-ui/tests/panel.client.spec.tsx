@@ -11,6 +11,9 @@ const t = (key: string) => ({
   'panel.external': '在新窗口打开', 'panel.close': '关闭工作台',
   'panel.projectId': '项目 ID', 'panel.taskId': '任务 ID',
   'panel.annotationId': '标注 ID（可选）', 'panel.navigate': '定位',
+  'panel.openLocator': '打开定位', 'panel.closeLocator': '关闭定位',
+  'panel.contextDetails': '查看会话上下文', 'panel.bound': '已绑定',
+  'panel.pageDiffers': '页面未绑定', 'panel.syncStatus': '同步状态',
   'panel.currentPage': '当前位置', 'panel.projects': '项目列表',
   'panel.recentProjects': '最近项目', 'panel.project': '项目',
   'panel.deleted': '已删除',
@@ -131,10 +134,24 @@ describe('Label Studio keep-alive panel', () => {
     expect(view.container.textContent).not.toContain('已保存确认')
   })
 
+  it('keeps the locator and context details collapsed until requested', () => {
+    const controller = new LabelStudioPanelController('http://127.0.0.1:8080'); controller.setOpen(true)
+    const view = mount(controller)
+    const header = view.container.querySelector('header')
+    expect(header?.contains(view.getByRole('button', { name: '查看会话上下文' }))).toBe(true)
+    expect(header?.contains(view.getByRole('button', { name: '打开定位' }))).toBe(true)
+    expect(view.queryByLabelText('项目 ID')).toBeNull()
+    expect(view.queryByText('当前位置: 项目 228')).toBeNull()
+    fireEvent.click(view.getByRole('button', { name: '打开定位' }))
+    expect(view.getByLabelText('项目 ID')).toBeTruthy()
+    fireEvent.click(view.getByRole('button', { name: '查看会话上下文' }))
+    expect(view.getByRole('region', { name: '查看会话上下文' }).textContent).toContain('当前位置项目 228')
+  })
+
   it('shows the committed page, selects available history, disables deleted history, and states the Bridge limit', () => {
     const controller = new LabelStudioPanelController('http://127.0.0.1:8080'); controller.setOpen(true)
     const view = mount(controller)
-    expect(view.getByText('当前位置: 项目 228')).toBeTruthy()
+    fireEvent.click(view.getByRole('button', { name: '查看会话上下文' }))
     const available = view.getByRole('button', { name: '项目 228' })
     const deleted = view.getByRole('button', { name: '项目 486 (已删除)' }) as HTMLButtonElement
     fireEvent.click(available)
@@ -146,9 +163,10 @@ describe('Label Studio keep-alive panel', () => {
   it('shows an unbound Session and ready integration statuses', () => {
     const controller = new LabelStudioPanelController('http://127.0.0.1:8080'); controller.setOpen(true)
     const view = mount(controller)
-    expect(view.getByText('当前绑定: 未绑定')).toBeTruthy()
-    expect(view.getByText('页面检查: 未请求')).toBeTruthy()
-    expect(view.getByText('Webhook: 已就绪')).toBeTruthy()
+    expect(view.getByText('项目 228 · 未绑定')).toBeTruthy()
+    expect(view.getByLabelText('页面检查: 未请求')).toBeTruthy()
+    expect(view.getByLabelText('Webhook: 已就绪')).toBeTruthy()
+    expect(view.queryByText('当前绑定: 未绑定')).toBeNull()
   })
 
   it('shows a task binding, source, recent binding projects, deletion, and degraded statuses', () => {
@@ -165,17 +183,26 @@ describe('Label Studio keep-alive panel', () => {
     }
     const view = mount(controller, vi.fn(), vi.fn(), vi.fn(), vi.fn(), {
       ...contextSnapshot,
-      sessionContext: { ...sessionContext, binding },
+      sessionContext: {
+        ...sessionContext,
+        page: { view: 'task' as const, projectId: 236 as never, taskId: 487 as never, annotationId: 67 as never },
+        binding,
+      },
       inspectionStatus: 'unsupported',
       webhookStatus: 'unavailable',
       webhookUnassigned: true,
     })
-    expect(view.getByText('当前绑定: 项目 236 / 任务 ID 487 / 标注 ID（可选） 67')).toBeTruthy()
-    expect(view.getByText('绑定来源: Webhook')).toBeTruthy()
+    expect(view.getByText('项目 236 / 任务 ID 487 / 标注 ID（可选） 67 · 已绑定')).toBeTruthy()
+    expect(view.getByText('页面不支持')).toBeTruthy()
+    expect(view.getByText('不可用 · 事件未匹配当前会话')).toBeTruthy()
+    fireEvent.click(view.getByRole('button', { name: '查看会话上下文' }))
+    const details = view.getByRole('region', { name: '查看会话上下文' })
+    expect(details.textContent).toContain('当前绑定项目 236 / 任务 ID 487 / 标注 ID（可选） 67')
+    expect(details.textContent).toContain('绑定来源Webhook')
     expect(view.getByRole('button', { name: '项目 236' })).toBeTruthy()
     expect((view.getByRole('button', { name: '项目 99 (已删除)' }) as HTMLButtonElement).disabled).toBe(true)
-    expect(view.getByText('页面检查: 页面不支持')).toBeTruthy()
-    expect(view.getByText('Webhook: 不可用 · 事件未匹配当前会话')).toBeTruthy()
+    expect(details.textContent).toContain('页面检查页面不支持')
+    expect(details.textContent).toContain('Webhook不可用 · 事件未匹配当前会话')
   })
 
   it('confirms the controlled target only after its iframe src commits', async () => {

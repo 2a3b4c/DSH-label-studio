@@ -62,7 +62,7 @@ python -c "import label_studio; print(label_studio.__version__)"
 
 ## 2. 安装插件
 
-先停止正在运行的 DSH。学员取得课堂发放的 package 压缩包后，必须先完整解压到一个长期保留的目录；不能直接从压缩包预览窗口运行。把变量设为包含 `package.json`、`cordis.patch.yml` 和 `lib/` 的解压后插件根目录：
+先停止正在运行的 DSH。学员取得课堂发放的 package 压缩包后，必须先完整解压到一个本地目录，并在cmd 或者 shell 或者 zsh环境下在该目录进行``pnpm install``。然后，设置插件根目录并加载插件到DSH：
 
 ```sh
 LABEL_STUDIO_PLUGIN_PACKAGE=/absolute/path/to/dsh-label-studio-plugin-package
