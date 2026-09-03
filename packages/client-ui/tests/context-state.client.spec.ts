@@ -13,7 +13,12 @@ function deferred<T>() {
 
 function harness(clock: () => number = Date.now) {
   const wait = deferred<LabelStudioEventBatch>()
-  let durable = { page: { view: 'projects' } as const, recentProjects: [], revision: 0 }
+  let durable = {
+    page: { view: 'projects' } as const,
+    recentProjects: [],
+    revision: 0,
+    binding: { recentProjects: [], revision: 0 },
+  }
   const host = { value: { version: 'one' } as object | undefined, listeners: new Set<() => void>() }
   const bridge = {
     currentHost: () => host.value,
@@ -30,6 +35,7 @@ function harness(clock: () => number = Date.now) {
         page,
         recentProjects: [],
         revision: page.view === 'projects' ? revision : revision + 1,
+        binding: durable.binding,
       }
       return durable
     }),
@@ -37,6 +43,7 @@ function harness(clock: () => number = Date.now) {
   }
   const page = {
     setOpen: vi.fn(), applyPage: vi.fn(async () => {}), clearPage: vi.fn(), reloadPage: vi.fn(),
+    inspectCurrentPage: vi.fn(async () => {}),
   }
   const controller = new LabelStudioContextController(bridge as never, page, 'source' as never, {
     contextOpenRetryMs: 1000, contextCloseTimeoutMs: 100, eventHistorySize: 4,
@@ -52,6 +59,7 @@ function eventHarness(eventHistorySize = 4) {
     onHostChanged: (listener: () => void) => { host.listeners.add(listener); return () => { host.listeners.delete(listener) } },
     openLease: vi.fn(async () => ({ lease, replayBaseline: 7, sessionContext: {
       page: { view: 'projects' }, recentProjects: [], revision: 0,
+      binding: { recentProjects: [], revision: 0 },
     } })),
     closeLease: vi.fn(async (_lease: unknown, _signal?: AbortSignal) => true),
     waitEvents: vi.fn((_lease: unknown, _after: unknown, signal: AbortSignal) => new Promise<LabelStudioEventBatch>((resolve, reject) => {
@@ -72,6 +80,7 @@ function eventHarness(eventHistorySize = 4) {
   }
   const page = {
     setOpen: vi.fn(), applyPage: vi.fn(async () => {}), clearPage: vi.fn(), reloadPage: vi.fn(),
+    inspectCurrentPage: vi.fn(async () => {}),
   }
   const controller = new LabelStudioContextController(bridge as never, page, 'source' as never, {
     contextOpenRetryMs: 1000, contextCloseTimeoutMs: 100, eventHistorySize,
@@ -81,13 +90,14 @@ function eventHarness(eventHistorySize = 4) {
 
 describe('Label Studio context controller', () => {
   it('opens one lease for the bound Session and uses the replay baseline', async () => {
-    const { bridge, controller } = harness()
+    const { bridge, page, controller } = harness()
     controller.bindSession('session-a' as never)
     await vi.waitFor(() => { expect(controller.store.getSnapshot().sessionContextStatus).toBe('ready') })
     expect(controller.store.getSnapshot()).toMatchObject({
       sessionId: 'session-a', lease, eventRevision: 7, observedEventRevision: 7,
       sessionContextStatus: 'ready', status: 'no-task',
     })
+    expect(page.setOpen).not.toHaveBeenCalled()
     expect(bridge.waitEvents).toHaveBeenCalledWith(lease, 7, expect.any(AbortSignal))
   })
 
@@ -160,6 +170,86 @@ describe('Label Studio context controller', () => {
       target: { projectId: 228, taskId: 486 }, targetRevision: 1,
       eventRevision: 8, observedEventRevision: 8, status: 'synced',
     })
+  })
+
+  it('runs one requested inspection without changing the controlled page state', async () => {
+    const { page, controller, waits } = eventHarness()
+    controller.bindSession('session-a' as never)
+    await vi.waitFor(() => { expect(waits).toHaveLength(1) })
+    page.applyPage.mockClear()
+    waits[0]?.resolve({
+      lease,
+      context: { phase: 'vacant', targetRevision: 0 },
+      events: [{
+        kind: 'inspect-current-page', eventRevision: 8,
+        inspectionId: '20000000-0000-4000-8000-000000000002',
+        deadlineAt: 8_000_000_000_000,
+      }],
+      latestRevision: 8,
+      resetRequired: false,
+    } as never)
+    await vi.waitFor(() => { expect(controller.store.getSnapshot().eventRevision).toBe(8) })
+    expect(page.inspectCurrentPage).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'inspect-current-page' }), lease, expect.any(AbortSignal),
+    )
+    expect(page.applyPage).not.toHaveBeenCalled()
+    expect(controller.store.getSnapshot().sessionContext.page).toEqual({ view: 'projects' })
+    expect(controller.store.getSnapshot().inspectionStatus).toBe('ready')
+  })
+
+  it.each([
+    ['unsupported', 'unsupported'],
+    ['unavailable', 'unavailable'],
+  ] as const)('exposes a completed %s inspection outcome', async (outcome, expected) => {
+    const { page, controller, waits } = eventHarness()
+    page.inspectCurrentPage.mockResolvedValueOnce(outcome)
+    controller.bindSession('session-a' as never)
+    await vi.waitFor(() => { expect(waits).toHaveLength(1) })
+    waits[0]?.resolve({
+      lease, context: { phase: 'vacant', targetRevision: 0 },
+      events: [{
+        kind: 'inspect-current-page', eventRevision: 8,
+        inspectionId: '20000000-0000-4000-8000-000000000002', deadlineAt: 8_000_000_000_000,
+      }], latestRevision: 8, resetRequired: false,
+    } as never)
+    await vi.waitFor(() => { expect(controller.store.getSnapshot().inspectionStatus).toBe(expected) })
+  })
+
+  it('exposes inspection timeout and resets inspection state when Session changes', async () => {
+    const { page, controller, waits } = eventHarness()
+    let rejectInspection!: (error: Error) => void
+    page.inspectCurrentPage.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectInspection = reject }))
+    controller.bindSession('session-a' as never)
+    await vi.waitFor(() => { expect(waits).toHaveLength(1) })
+    waits[0]?.resolve({
+      lease, context: { phase: 'vacant', targetRevision: 0 },
+      events: [{
+        kind: 'inspect-current-page', eventRevision: 8,
+        inspectionId: '20000000-0000-4000-8000-000000000002', deadlineAt: 8_000_000_000_000,
+      }], latestRevision: 8, resetRequired: false,
+    } as never)
+    await vi.waitFor(() => { expect(controller.store.getSnapshot().inspectionStatus).toBe('inspecting') })
+    rejectInspection(new Error('label-studio client: inspection expired'))
+    await vi.waitFor(() => { expect(controller.store.getSnapshot().inspectionStatus).toBe('timeout') })
+    controller.bindSession('session-b' as never)
+    expect(controller.store.getSnapshot().inspectionStatus).toBe('idle')
+  })
+
+  it('projects Webhook availability and unmatched events without changing the binding', async () => {
+    const { controller, waits } = eventHarness()
+    controller.bindSession('session-a' as never)
+    await vi.waitFor(() => { expect(waits).toHaveLength(1) })
+    const binding = controller.store.getSnapshot().sessionContext.binding
+    waits[0]?.resolve({
+      lease, context: { phase: 'vacant', targetRevision: 0 },
+      events: [
+        { kind: 'webhook-status', eventRevision: 8, status: 'unavailable' },
+        { kind: 'webhook-unassigned', eventRevision: 9, reason: 'no-matching-binding' },
+      ], latestRevision: 9, resetRequired: false,
+    } as never)
+    await vi.waitFor(() => { expect(controller.store.getSnapshot().eventRevision).toBe(9) })
+    expect(controller.store.getSnapshot()).toMatchObject({ webhookStatus: 'unavailable', webhookUnassigned: true })
+    expect(controller.store.getSnapshot().sessionContext.binding).toEqual(binding)
   })
 
   it('keeps a focus receipt pending after an unknown ACK and reconciles from the next wait', async () => {

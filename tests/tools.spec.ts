@@ -1,6 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import type { LabelStudioBindingSnapshot, LabelStudioBindingTarget } from '@deepseek-ai/dsh-label-studio-protocol'
 import { describe, expect, it, vi } from 'vitest'
 import {
   LabelStudioHttpError,
@@ -18,6 +19,7 @@ import {
 } from '../src/context-types.ts'
 import { LabelStudioContextRegistry } from '../src/context-registry.ts'
 import { LabelStudioOperationGate } from '../src/lifecycle.ts'
+import { LabelStudioOperationContextResolver } from '../src/operation-context.ts'
 import type { LabelStudioRuntime } from '../src/runtime.ts'
 import { registerLabelStudioTools } from '../src/tools.ts'
 import type { LabelStudioSessionContextStore } from '../src/session-context-store.ts'
@@ -27,7 +29,11 @@ const signal = new AbortController().signal
 const ACTIVE_SESSION = 'active-session'
 const SOURCE_ID = labelStudioContextSourceId('123e4567-e89b-42d3-a456-426614174000')
 
-async function setup(activeTaskMaxBytes = 262_144, clock: () => number = Date.now) {
+async function setup(
+  activeTaskMaxBytes = 262_144,
+  clock: () => number = Date.now,
+  ensureWebhook = vi.fn(async () => {}),
+) {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
@@ -68,16 +74,39 @@ async function setup(activeTaskMaxBytes = 262_144, clock: () => number = Date.no
   }
   const getProject = vi.fn().mockResolvedValue(project)
   const getTask = vi.fn().mockResolvedValue(task)
+  const updateProjectLabelConfig = vi.fn().mockResolvedValue({
+    id: labelStudioProjectId(7), labelConfig: '<View><Text name="text" value="$text" /></View>',
+  })
   const api = {
     createProject,
     importTasks,
     createPrediction,
+    updateProjectLabelConfig,
     getProject,
     getTask,
   } as unknown as LabelStudioApi
   const contexts = new LabelStudioContextRegistry(30_000, clock)
+  let binding: LabelStudioBindingSnapshot = { recentProjects: [], revision: 0 }
+  const readBinding = vi.fn(() => binding)
+  const commitBinding = vi.fn(async (_identity, request: {
+    expectedRevision: number
+    target: LabelStudioBindingTarget
+    source: 'tool-result' | 'current-page' | 'webhook'
+  }) => {
+    if (request.expectedRevision !== binding.revision) return { kind: 'conflict' as const, current: binding }
+    binding = {
+      target: request.target,
+      source: request.source,
+      boundAt: 1,
+      recentProjects: [],
+      revision: binding.revision + 1,
+    }
+    return { kind: 'committed' as const, snapshot: binding }
+  })
   const sessionContexts = {
     read: vi.fn(() => ({ page: { view: 'projects' }, recentProjects: [], revision: 0 })),
+    readBinding,
+    commitBinding,
     commit: vi.fn(),
     markProjectDeleted: vi.fn(async () => ({
       page: { view: 'projects' },
@@ -85,6 +114,15 @@ async function setup(activeTaskMaxBytes = 262_144, clock: () => number = Date.no
       revision: 2,
     })),
   } as unknown as LabelStudioSessionContextStore
+  const requestCurrentPage = vi.fn().mockResolvedValue({
+    view: 'task', projectId: labelStudioProjectId(7), taskId: labelStudioTaskId(11),
+  })
+  const resolver = new LabelStudioOperationContextResolver(
+    sessionContexts,
+    { request: requestCurrentPage },
+    api,
+    5_000,
+  )
   const changes = new LabelStudioChangeBroker(contexts, 64, sessionContexts)
   const operations = new LabelStudioOperationGate()
   const disposeTools = registerLabelStudioTools(
@@ -94,7 +132,9 @@ async function setup(activeTaskMaxBytes = 262_144, clock: () => number = Date.no
     contexts,
     changes,
     operations,
-    { activeTaskMaxBytes, focusAckTimeoutMs: 5_000 },
+    resolver,
+    sessionContexts,
+    { activeTaskMaxBytes, focusAckTimeoutMs: 5_000, ensureWebhook },
   )
   const activate = () => {
     const opened = contexts.openLease(ACTIVE_SESSION as never, SOURCE_ID, 0)
@@ -109,6 +149,13 @@ async function setup(activeTaskMaxBytes = 262_144, clock: () => number = Date.no
       taskId: labelStudioTaskId(11),
       annotationId: labelStudioAnnotationId(13),
     })
+    binding = {
+      target: { kind: 'task', projectId: labelStudioProjectId(7), taskId: labelStudioTaskId(11), annotationId: labelStudioAnnotationId(13) },
+      source: 'current-page',
+      boundAt: 1,
+      recentProjects: [],
+      revision: 1,
+    }
     return opened
   }
   return {
@@ -117,6 +164,7 @@ async function setup(activeTaskMaxBytes = 262_144, clock: () => number = Date.no
     createProject,
     importTasks,
     createPrediction,
+    updateProjectLabelConfig,
     getProject,
     getTask,
     project,
@@ -124,9 +172,18 @@ async function setup(activeTaskMaxBytes = 262_144, clock: () => number = Date.no
     contexts,
     changes,
     sessionContexts,
+    resolver,
+    requestCurrentPage,
+    commitBinding,
+    setBinding(target: LabelStudioBindingTarget | undefined, revision = 0) {
+      binding = target === undefined
+        ? { recentProjects: [], revision }
+        : { target, source: 'tool-result', boundAt: 1, recentProjects: [], revision }
+    },
     activate,
     operations,
     disposeTools,
+    ensureWebhook,
   }
 }
 
@@ -173,31 +230,216 @@ describe('Label Studio tools', () => {
       'label_studio_get_active_task',
       'label_studio_import_tasks',
       'label_studio_status',
+      'label_studio_update_label_config',
     ])
     expect(names).not.toContain('label_studio_update_active_annotation')
   })
 
-  it('requires an owning agent and a live committed target', async () => {
-    const { ctx, getProject, getTask } = await setup()
+  it('commits the created project only after the project API succeeds', async () => {
+    const { ctx, commitBinding, createProject } = await setup()
+    const result = await call(ctx, 'label_studio_create_project', { title: 'Images' }, ACTIVE_SESSION)
+    expect(result.isError).toBe(false)
+    expect(createProject).toHaveBeenCalledOnce()
+    expect(commitBinding).toHaveBeenCalledWith(
+      { sessionId: ACTIVE_SESSION, createdAt: 0 },
+      { expectedRevision: 0, target: { kind: 'project', projectId: 7 }, source: 'tool-result' },
+    )
+  })
+
+  it('keeps one Session binding through create, import, template, and current-task prediction', async () => {
+    const value = await setup()
+    const labelConfig = '<View><Text name="text" value="$text" /></View>'
+
+    await expect(call(value.ctx, 'label_studio_create_project', { title: 'Course acceptance' }, ACTIVE_SESSION))
+      .resolves.toMatchObject({ isError: false })
+    await expect(call(value.ctx, 'label_studio_import_tasks', {
+      tasks: [{ data: { text: 'Is this a ship?' } }],
+    }, ACTIVE_SESSION)).resolves.toMatchObject({ isError: false })
+    await expect(call(value.ctx, 'label_studio_update_label_config', {
+      label_config: labelConfig,
+    }, ACTIVE_SESSION)).resolves.toMatchObject({ isError: false })
+    await expect(call(value.ctx, 'label_studio_create_prediction', {
+      current_page: true,
+      result: [{ from_name: 'answer', to_name: 'text', type: 'choices', value: { choices: ['yes'] } }],
+    }, ACTIVE_SESSION)).resolves.toMatchObject({ isError: false })
+
+    expect(value.createProject).toHaveBeenCalledOnce()
+    expect(value.importTasks).toHaveBeenCalledOnce()
+    expect(value.updateProjectLabelConfig).toHaveBeenCalledOnce()
+    expect(value.createPrediction).toHaveBeenCalledOnce()
+    expect(value.requestCurrentPage).toHaveBeenCalledOnce()
+    expect(value.commitBinding).toHaveBeenCalledTimes(4)
+    expect(value.sessionContexts.readBinding()).toMatchObject({
+      target: { kind: 'task', projectId: 7, taskId: 11 },
+      source: 'tool-result',
+      revision: 4,
+    })
+  })
+
+  it('resolves import targets from explicit ids, bindings, or the requested current page', async () => {
+    const explicit = await setup()
+    await call(explicit.ctx, 'label_studio_import_tasks', {
+      project_id: 7, tasks: [{ data: { text: 'a' } }],
+    }, ACTIVE_SESSION)
+    expect(explicit.commitBinding).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
+      target: { kind: 'project', projectId: 7 },
+    }))
+
+    const bound = await setup()
+    bound.setBinding({ kind: 'project', projectId: labelStudioProjectId(7) }, 2)
+    const boundResult = await call(bound.ctx, 'label_studio_import_tasks', {
+      tasks: [{ data: { text: 'b' } }],
+    }, ACTIVE_SESSION)
+    expect(boundResult.isError).toBe(false)
+    expect(bound.commitBinding).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
+      expectedRevision: 2, target: { kind: 'project', projectId: 7 },
+    }))
+
+    const current = await setup()
+    current.setBinding({ kind: 'project', projectId: labelStudioProjectId(8) }, 4)
+    const currentResult = await call(current.ctx, 'label_studio_import_tasks', {
+      current_page: true, tasks: [{ data: { text: 'c' } }],
+    }, ACTIVE_SESSION)
+    expect(currentResult.isError).toBe(false)
+    expect(current.requestCurrentPage).toHaveBeenCalledOnce()
+    expect(current.commitBinding).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
+      target: { kind: 'project', projectId: 7 },
+    }))
+  })
+
+  it('resolves prediction targets and commits the verified task after mutation success', async () => {
+    const value = await setup()
+    const result = await call(value.ctx, 'label_studio_create_prediction', {
+      project_id: 7, task_id: 11, result: [],
+    }, ACTIVE_SESSION)
+    expect(result.isError).toBe(false)
+    expect(value.createPrediction).toHaveBeenCalledOnce()
+    expect(value.commitBinding).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      target: { kind: 'task', projectId: 7, taskId: 11 },
+    }))
+  })
+
+  it('reads through an on-demand current page and commits the successfully read task', async () => {
+    const value = await setup()
+    const result = await call(value.ctx, 'label_studio_get_active_task', {}, ACTIVE_SESSION)
+    expect(result.isError).toBe(false)
+    expect(value.requestCurrentPage).toHaveBeenCalledOnce()
+    expect(value.commitBinding).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      target: { kind: 'task', projectId: 7, taskId: 11 },
+    }))
+  })
+
+  it('updates only label_config and binds the verified project', async () => {
+    const value = await setup()
+    const labelConfig = '<View><Text name="text" value="$text" /></View>'
+    const result = await call(value.ctx, 'label_studio_update_label_config', {
+      project_id: 7, label_config: labelConfig,
+    }, ACTIVE_SESSION)
+    expect(result.value).toEqual({ projectId: 7, labelConfig })
+    expect(value.updateProjectLabelConfig).toHaveBeenCalledWith(7, labelConfig, expect.any(AbortSignal))
+    expect(value.commitBinding).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      target: { kind: 'project', projectId: 7 },
+    }))
+  })
+
+  it.each([
+    { tool: 'label_studio_create_project', args: { title: 'Images' }, api: 'createProject' },
+    { tool: 'label_studio_import_tasks', args: { project_id: 7, tasks: [{ data: { text: 'a' } }] }, api: 'importTasks' },
+    { tool: 'label_studio_create_prediction', args: { project_id: 7, task_id: 11, result: [] }, api: 'createPrediction' },
+    { tool: 'label_studio_create_active_prediction', args: { result: [] }, api: 'createPrediction' },
+    {
+      tool: 'label_studio_update_label_config',
+      args: { project_id: 7, label_config: '<View><Text name="text" value="$text" /></View>' },
+      api: 'updateProjectLabelConfig',
+    },
+  ] as const)('keeps successful $tool output when the binding CAS conflicts', async ({ tool, args, api }) => {
+    const value = await setup()
+    value.commitBinding.mockResolvedValueOnce({
+      kind: 'conflict',
+      current: {
+        target: { kind: 'project', projectId: labelStudioProjectId(8) },
+        source: 'tool-result', boundAt: 2, recentProjects: [], revision: 1,
+      },
+    })
+    const result = await call(value.ctx, tool, args, ACTIVE_SESSION)
+    expect(result.isError).toBe(false)
+    expect(result.value).toMatchObject({ warning: 'binding-conflict' })
+    expect(firstToolText(result)).toContain('binding-conflict')
+    expect(value[api]).toHaveBeenCalledOnce()
+    expect(value.commitBinding).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    new Error('label-studio: POST /api/projects/7/import returned 422'),
+    new LabelStudioMutationOutcomeUnknownError('POST /api/projects/7/import'),
+  ])('does not bind or retry an import whose outcome is unsuccessful or unknown: %s', async (failure) => {
+    const value = await setup()
+    value.importTasks.mockRejectedValueOnce(failure)
+    const result = await call(value.ctx, 'label_studio_import_tasks', {
+      project_id: 7, tasks: [{ data: { text: 'a' } }],
+    }, ACTIVE_SESSION)
+    expect(result.isError).toBe(true)
+    expect(value.importTasks).toHaveBeenCalledOnce()
+    expect(value.commitBinding).not.toHaveBeenCalled()
+  })
+
+  it('does not bind a project when project creation has no verified success result', async () => {
+    const value = await setup()
+    value.createProject.mockRejectedValueOnce(new LabelStudioMutationOutcomeUnknownError('POST /api/projects/'))
+    const result = await call(value.ctx, 'label_studio_create_project', { title: 'Images' }, ACTIVE_SESSION)
+    expect(result.isError).toBe(true)
+    expect(value.createProject).toHaveBeenCalledOnce()
+    expect(value.commitBinding).not.toHaveBeenCalled()
+  })
+
+  it('uses binding and current-page selectors for prediction and template operations', async () => {
+    const bound = await setup()
+    bound.setBinding({ kind: 'task', projectId: labelStudioProjectId(7), taskId: labelStudioTaskId(11) }, 3)
+    await expect(call(bound.ctx, 'label_studio_create_prediction', { result: [] }, ACTIVE_SESSION))
+      .resolves.toMatchObject({ isError: false })
+    expect(bound.requestCurrentPage).not.toHaveBeenCalled()
+
+    const current = await setup()
+    await expect(call(current.ctx, 'label_studio_update_label_config', {
+      current_page: true,
+      label_config: '<View><Text name="text" value="$text" /></View>',
+    }, ACTIVE_SESSION)).resolves.toMatchObject({ isError: false })
+    expect(current.requestCurrentPage).toHaveBeenCalledOnce()
+  })
+
+  it('rejects an explicit prediction project mismatch before mutation dispatch', async () => {
+    const value = await setup()
+    value.getTask.mockResolvedValueOnce({ ...value.task, projectId: labelStudioProjectId(8) })
+    const result = await call(value.ctx, 'label_studio_create_prediction', {
+      project_id: 7, task_id: 11, result: [],
+    }, ACTIVE_SESSION)
+    expect(result.isError).toBe(true)
+    expect(value.createPrediction).not.toHaveBeenCalled()
+    expect(value.commitBinding).not.toHaveBeenCalled()
+  })
+
+  it('requires an owning agent and falls back to one current-page inspection without a binding', async () => {
+    const { ctx, getProject, getTask, requestCurrentPage } = await setup()
     const withoutAgent = await call(ctx, 'label_studio_get_active_task', {})
     const withoutTarget = await call(ctx, 'label_studio_get_active_task', {}, ACTIVE_SESSION)
     expect(withoutAgent.isError).toBe(true)
     expect(firstToolText(withoutAgent)).toContain('Session')
-    expect(withoutTarget.isError).toBe(true)
-    expect(firstToolText(withoutTarget)).toContain('active task')
-    expect(getProject).not.toHaveBeenCalled()
-    expect(getTask).not.toHaveBeenCalled()
+    expect(withoutTarget.isError).toBe(false)
+    expect(requestCurrentPage).toHaveBeenCalledOnce()
+    expect(getProject).toHaveBeenCalledOnce()
+    expect(getTask).toHaveBeenCalledTimes(2)
   })
 
-  it('does not fall back to an expired target', async () => {
+  it('keeps using the durable binding after its browser lease expires', async () => {
     let now = 0
-    const { ctx, activate, getProject, getTask } = await setup(262_144, () => now)
+    const { ctx, activate, getProject, getTask, requestCurrentPage } = await setup(262_144, () => now)
     activate()
     now = 30_000
     const result = await call(ctx, 'label_studio_get_active_task', {}, ACTIVE_SESSION)
-    expect(result.isError).toBe(true)
-    expect(getProject).not.toHaveBeenCalled()
-    expect(getTask).not.toHaveBeenCalled()
+    expect(result.isError).toBe(false)
+    expect(requestCurrentPage).not.toHaveBeenCalled()
+    expect(getProject).toHaveBeenCalledOnce()
+    expect(getTask).toHaveBeenCalledTimes(2)
   })
 
   it('reads authoritative project and task JSON into the model result', async () => {
@@ -227,7 +469,7 @@ describe('Label Studio tools', () => {
       labelStudioProjectId(7),
     )
     expect(contexts.getLease(ACTIVE_SESSION as never)).toBeUndefined()
-    expect(getTask).not.toHaveBeenCalled()
+    expect(getTask).toHaveBeenCalledOnce()
   })
 
   it('fails instead of truncating an oversized model result', async () => {
@@ -248,7 +490,7 @@ describe('Label Studio tools', () => {
 
     const project = await call(ctx, 'label_studio_create_project', {
       title: 'Images', label_config: '<View />', description: 'Course data',
-    })
+    }, ACTIVE_SESSION)
     expect(project.value).toEqual({
       id: 7, title: 'Images', webUrl: 'http://127.0.0.1:8080/projects/7/data',
     })
@@ -258,17 +500,25 @@ describe('Label Studio tools', () => {
     }, expect.any(AbortSignal))
   })
 
+  it('uses the existing status tool as the one-shot optional Webhook recovery entry', async () => {
+    const ensureWebhook = vi.fn(async () => {})
+    const { ctx } = await setup(262_144, Date.now, ensureWebhook)
+    await call(ctx, 'label_studio_status', {})
+    expect(ensureWebhook).toHaveBeenCalledOnce()
+    expect(ensureWebhook).toHaveBeenCalledWith(expect.any(AbortSignal))
+  })
+
   it('imports tasks and creates nested prediction results', async () => {
     const { ctx, importTasks, createPrediction } = await setup()
     const tasks = [{ data: { image: '/data/a.jpg' } }]
-    const imported = await call(ctx, 'label_studio_import_tasks', { project_id: 7, tasks })
+    const imported = await call(ctx, 'label_studio_import_tasks', { project_id: 7, tasks }, ACTIVE_SESSION)
     expect(imported.value).toEqual({ projectId: 7, taskCount: 2, taskIds: [11, 12] })
     expect(importTasks).toHaveBeenCalledWith(7, tasks, expect.any(AbortSignal))
 
     const result = [{ from_name: 'label', to_name: 'image', type: 'rectanglelabels', value: { rectanglelabels: ['ship'] } }]
     const prediction = await call(ctx, 'label_studio_create_prediction', {
       task_id: 11, result, model_version: 'dsh', score: 0.9,
-    })
+    }, ACTIVE_SESSION)
     expect(prediction.value).toEqual({ id: 19, taskId: 11, modelVersion: 'dsh' })
     expect(createPrediction).toHaveBeenCalledWith({
       taskId: 11, result, modelVersion: 'dsh', score: 0.9,
@@ -277,16 +527,16 @@ describe('Label Studio tools', () => {
 
   it('rejects non-array task and prediction JSON before the API call', async () => {
     const { ctx, importTasks, createPrediction } = await setup()
-    const imported = await call(ctx, 'label_studio_import_tasks', { project_id: 7, tasks: {} })
-    const predicted = await call(ctx, 'label_studio_create_prediction', { task_id: 11, result: {} })
+    const imported = await call(ctx, 'label_studio_import_tasks', { project_id: 7, tasks: {} }, ACTIVE_SESSION)
+    const predicted = await call(ctx, 'label_studio_create_prediction', { task_id: 11, result: {} }, ACTIVE_SESSION)
     expect(imported.isError).toBe(true)
     expect(predicted.isError).toBe(true)
     expect(importTasks).not.toHaveBeenCalled()
     expect(createPrediction).not.toHaveBeenCalled()
   })
 
-  it('requires an owning Session and its live committed target for active prediction', async () => {
-    const { ctx, getTask, createPrediction, changes } = await setup()
+  it('requires an owning Session and falls back to the current page for active prediction', async () => {
+    const { ctx, getTask, createPrediction, changes, requestCurrentPage } = await setup()
     const withoutAgent = await call(ctx, 'label_studio_create_active_prediction', { result: [] })
     const withoutTarget = await call(
       ctx,
@@ -296,11 +546,11 @@ describe('Label Studio tools', () => {
     )
     expect(withoutAgent.isError).toBe(true)
     expect(firstToolText(withoutAgent)).toContain('Session')
-    expect(withoutTarget.isError).toBe(true)
-    expect(firstToolText(withoutTarget)).toContain('active task')
-    expect(getTask).not.toHaveBeenCalled()
-    expect(createPrediction).not.toHaveBeenCalled()
-    expect(changes.latestRevision(ACTIVE_SESSION as never)).toBe(0)
+    expect(withoutTarget.isError).toBe(false)
+    expect(requestCurrentPage).toHaveBeenCalledOnce()
+    expect(getTask).toHaveBeenCalledOnce()
+    expect(createPrediction).toHaveBeenCalledOnce()
+    expect(changes.latestRevision(ACTIVE_SESSION as never)).toBe(1)
   })
 
   it('validates the active task association, creates a prediction, and then publishes one refresh event', async () => {
@@ -394,34 +644,24 @@ describe('Label Studio tools', () => {
     expect(changes.latestRevision(ACTIVE_SESSION as never)).toBe(0)
   })
 
-  it('does not dispatch after the active target changes during task validation', async () => {
-    const { ctx, activate, contexts, task, getTask, createPrediction, changes } = await setup()
-    const { lease } = activate()
-    let resolveTask!: (value: typeof task) => void
-    getTask.mockImplementationOnce(() => new Promise((resolve) => { resolveTask = resolve }))
-    const pending = call(
-      ctx,
-      'label_studio_create_active_prediction',
-      { result: [] },
-      ACTIVE_SESSION,
-    )
-    await vi.waitFor(() => { expect(getTask).toHaveBeenCalledOnce() })
-    const next = contexts.reserveBrowserTarget(
-      lease.leaseId,
-      lease.generation,
-      labelStudioNavigationSequence(2),
-      1,
-    )
-    contexts.publishTarget(lease.leaseId, lease.generation, next.targetRevision, {
-      projectId: labelStudioProjectId(7),
-      taskId: labelStudioTaskId(12),
+  it('keeps an active prediction successful when its post-mutation binding commit conflicts', async () => {
+    const { ctx, activate, commitBinding, createPrediction, changes } = await setup()
+    activate()
+    commitBinding.mockResolvedValueOnce({
+      kind: 'conflict',
+      current: {
+        target: { kind: 'project', projectId: labelStudioProjectId(8) },
+        source: 'tool-result', boundAt: 2, recentProjects: [], revision: 2,
+      },
     })
-    resolveTask(task)
-    const result = await pending
-    expect(result.isError).toBe(true)
-    expect(firstToolText(result)).toContain('active task changed')
-    expect(createPrediction).not.toHaveBeenCalled()
-    expect(changes.latestRevision(ACTIVE_SESSION as never)).toBe(0)
+    const result = await call(
+      ctx, 'label_studio_create_active_prediction', { result: [] }, ACTIVE_SESSION,
+    )
+    expect(result.isError).toBe(false)
+    expect(result.value).toMatchObject({ id: 19, warning: 'binding-conflict' })
+    expect(createPrediction).toHaveBeenCalledOnce()
+    expect(commitBinding).toHaveBeenCalledOnce()
+    expect(changes.latestRevision(ACTIVE_SESSION as never)).toBe(1)
   })
 
   it.each([

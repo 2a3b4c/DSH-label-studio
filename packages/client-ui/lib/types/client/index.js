@@ -1,6 +1,7 @@
 import { LabelStudioAction } from "./LabelStudioAction.js";
 import { LabelStudioPanelController } from "./panel-state.js";
 import { LabelStudioContextBridge } from "./context-bridge.js";
+import { LabelStudioCurrentPageBridge } from "./current-page-bridge.js";
 import { LabelStudioContextController } from "./context-state.js";
 import { parseLabelStudioTargetInput } from "./page-url.js";
 import { en, NS, zh } from "./locales.js";
@@ -10,6 +11,7 @@ import { LabelStudioLayoutController } from "./layout/service.js";
 import { LabelStudioThemePresenter } from "./layout/theme-presenter.js";
 export { LabelStudioLayoutController } from "./layout/service.js";
 export { isLabelStudioBridgeFailure, isLabelStudioPluginFailure, isLabelStudioTransportUnknown, LabelStudioContextBridge, } from "./context-bridge.js";
+export { LabelStudioCurrentPageBridge } from "./current-page-bridge.js";
 export { LabelStudioContextController } from "./context-state.js";
 export { buildLabelStudioPageUrl, parseLabelStudioTargetInput } from "./page-url.js";
 export const inject = ['slots', 'locale', 'theme', 'connection'];
@@ -23,10 +25,22 @@ function readBootConfig() {
     catch {
         throw new Error('label-studio client: invalid browser boot baseUrl');
     }
-    for (const field of ['contextOpenRetryMs', 'contextCloseTimeoutMs', 'eventHistorySize']) {
+    for (const field of [
+        'contextOpenRetryMs', 'contextCloseTimeoutMs', 'eventHistorySize', 'currentPageTimeoutMs',
+    ]) {
         if (!Number.isSafeInteger(config[field]) || config[field] <= 0) {
             throw new Error(`label-studio client: invalid browser boot ${field}`);
         }
+    }
+    if (config.frameBaseUrl === '' || config.frameCapability === ''
+        || config.inspectionProtocol !== 'dsh-label-studio-page/v1') {
+        throw new Error('label-studio client: invalid frame boot config');
+    }
+    try {
+        new URL(config.frameBaseUrl);
+    }
+    catch {
+        throw new Error('label-studio client: invalid frame boot baseUrl');
     }
     return config;
 }
@@ -36,9 +50,9 @@ function readBootConfig() {
  */
 export function apply(ctx) {
     const boot = readBootConfig();
-    const baseUrl = boot.baseUrl;
+    const baseUrl = boot.frameBaseUrl;
     const layout = new LabelStudioLayoutController();
-    const panel = new LabelStudioPanelController(baseUrl);
+    const panel = new LabelStudioPanelController(boot.frameBaseUrl, boot.baseUrl);
     const setOpen = (open) => {
         if (panel.store.getSnapshot().open === open)
             return;
@@ -50,16 +64,19 @@ export function apply(ctx) {
     };
     const connection = ctx.get('connection');
     const bridge = new LabelStudioContextBridge({ connection, channel: '/label-studio' });
+    const currentPages = new LabelStudioCurrentPageBridge(bridge, () => panel.currentFrameWindow(), new URL(boot.frameBaseUrl).origin, boot.inspectionProtocol, boot.frameCapability);
     const sourceId = globalThis.crypto.randomUUID();
     const contexts = new LabelStudioContextController(bridge, {
         setOpen,
         applyPage: page => panel.applyPage(page),
         clearPage: () => { panel.clearPage(); },
         reloadPage: () => { panel.reloadPage(); },
+        inspectCurrentPage: (event, lease, signal) => currentPages.inspect(event, lease, signal),
     }, sourceId, {
         contextOpenRetryMs: boot.contextOpenRetryMs,
         contextCloseTimeoutMs: boot.contextCloseTimeoutMs,
         eventHistorySize: boot.eventHistorySize,
+        ...(boot.webhookStatus === undefined ? {} : { webhookStatus: boot.webhookStatus }),
     });
     ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'label-studio: dictionaries');
     ctx.effect(() => {
@@ -81,6 +98,10 @@ export function apply(ctx) {
                     baseUrl,
                     bindSession: (sessionId) => { contexts.bindSession(sessionId); },
                     confirmApplied: (revision) => { panel.confirmApplied(revision); },
+                    attachFrame: (frame) => {
+                        currentPages.cancel();
+                        panel.attachFrame(frame);
+                    },
                     selectTarget: input => contexts.selectPage(parseLabelStudioTargetInput(input)),
                     selectPage: page => contexts.selectPage(page),
                     close: () => { setOpen(false); },
@@ -113,6 +134,7 @@ export function apply(ctx) {
     }, 'label-studio: theme presenter');
     ctx.effect(() => async () => {
         await contexts.dispose();
+        currentPages.dispose();
         panel.dispose();
     }, 'label-studio: browser context lifecycle');
 }

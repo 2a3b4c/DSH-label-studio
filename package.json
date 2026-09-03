@@ -1,7 +1,7 @@
 {
   "name": "dsh-label-studio-workbench",
   "description": "Label Studio plugin: managed local server, PAT-authenticated REST tools, and a docked browser workbench",
-  "version": "0.2.0-alpha.3",
+  "version": "0.2.0-alpha.2",
   "publishConfig": {
     "access": "public"
   },

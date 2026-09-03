@@ -1,5 +1,5 @@
 /** Host-side validation for Label Studio context identifiers. */
-import type { LabelStudioAnnotationId, LabelStudioContextLeaseId, LabelStudioContextSourceId, LabelStudioFocusCorrelationId, LabelStudioNavigationSequence, LabelStudioPredictionId, LabelStudioProjectId, LabelStudioTaskId } from '@deepseek-ai/dsh-label-studio-protocol';
+import type { LabelStudioAnnotationId, LabelStudioContextLeaseId, LabelStudioContextSourceId, LabelStudioFocusCorrelationId, LabelStudioNavigationSequence, LabelStudioPageInspectionId, LabelStudioPredictionId, LabelStudioProjectId, LabelStudioTaskId } from '@deepseek-ai/dsh-label-studio-protocol';
 /**
  * Validate and brand a Label Studio project id.
  * @param value - untrusted numeric REST or JSON value.
@@ -42,6 +42,12 @@ export declare const labelStudioContextLeaseId: (value: string) => LabelStudioCo
  * @returns the validated UUID.
  */
 export declare const labelStudioFocusCorrelationId: (value: string) => LabelStudioFocusCorrelationId;
+/**
+ * Validate and brand a Host current-page inspection UUID.
+ * @param value - untrusted JSON string.
+ * @returns the validated UUID.
+ */
+export declare const labelStudioPageInspectionId: (value: string) => LabelStudioPageInspectionId;
 /**
  * Validate and brand a browser navigation sequence.
  * @param value - untrusted numeric JSON value.

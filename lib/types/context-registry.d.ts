@@ -122,6 +122,8 @@ export declare class LabelStudioContextRegistry {
      * @returns the immutable active context, or undefined without a committed target.
      */
     getLive(sessionId: SessionId): LabelStudioActiveContext | undefined;
+    /** Return every current, unexpired Session lease id. */
+    sessionIds(): readonly SessionId[];
     /**
      * Subscribe to authoritative lease removal.
      * @param listener - callback isolated from cleanup and sibling callbacks.

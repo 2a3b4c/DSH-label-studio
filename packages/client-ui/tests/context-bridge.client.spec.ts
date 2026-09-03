@@ -7,7 +7,12 @@ import {
 } from '../src/client/context-bridge.ts'
 
 const lease = { leaseId: '10000000-0000-4000-8000-000000000001', generation: 1, expiresAt: 1000 }
-const sessionContext = { page: { view: 'projects' }, recentProjects: [], revision: 0 }
+const sessionContext = {
+  page: { view: 'projects' },
+  recentProjects: [],
+  revision: 0,
+  binding: { recentProjects: [], revision: 0 },
+}
 
 function connection(result: unknown) {
   const listeners = new Set<() => void>()
@@ -44,7 +49,7 @@ describe('Label Studio browser RPC bridge', () => {
     }, undefined)
   })
 
-  it('encodes and validates all seven endpoint payloads and results', async () => {
+  it('encodes and validates all eight endpoint payloads and results', async () => {
     const active = {
       sessionId: 'session-a', sourceId: '20000000-0000-4000-8000-000000000002',
       ...lease, targetRevision: 1, target: { projectId: 228, taskId: 486 },
@@ -58,12 +63,24 @@ describe('Label Studio browser RPC bridge', () => {
         'context/publish': active,
         'events/wait': {
           lease, context: { phase: 'committed', targetRevision: 1, target: active.target },
-          events: [], latestRevision: 3, resetRequired: false,
+          events: [
+            {
+              kind: 'inspect-current-page', eventRevision: 3,
+              inspectionId: '30000000-0000-4000-8000-000000000003', deadlineAt: 5000,
+            },
+            { kind: 'webhook-unassigned', eventRevision: 4, reason: 'no-matching-binding' },
+            { kind: 'webhook-status', eventRevision: 5, status: 'ready' },
+            { kind: 'binding-changed', eventRevision: 6, binding: { recentProjects: [], revision: 2 } },
+          ], latestRevision: 6, resetRequired: false,
         },
         'focus/ack': active,
         'page/commit': {
-          page: { view: 'task', projectId: 228, taskId: 486 }, recentProjects: [], revision: 1,
+          page: { view: 'task', projectId: 228, taskId: 486 },
+          recentProjects: [],
+          revision: 1,
+          binding: { recentProjects: [], revision: 0 },
         },
+        'inspection/commit': { accepted: true },
       }[endpoint] },
     }))
     const bridge = new LabelStudioContextBridge({ connection: fixture.source as never, channel: '/label-studio' })
@@ -73,13 +90,48 @@ describe('Label Studio browser RPC bridge', () => {
     await expect(bridge.commitPage(
       lease as never, 1 as never, 0, { view: 'task', projectId: 228, taskId: 486 } as never,
     )).resolves.toMatchObject({ revision: 1 })
-    await expect(bridge.waitEvents(lease as never, 2, new AbortController().signal)).resolves.toMatchObject({ latestRevision: 3 })
+    await expect(bridge.waitEvents(lease as never, 2, new AbortController().signal)).resolves.toMatchObject({
+      latestRevision: 6,
+      events: [
+        expect.objectContaining({ kind: 'inspect-current-page' }),
+        { kind: 'webhook-unassigned', eventRevision: 4, reason: 'no-matching-binding' },
+        { kind: 'webhook-status', eventRevision: 5, status: 'ready' },
+        { kind: 'binding-changed', eventRevision: 6, binding: { recentProjects: [], revision: 2 } },
+      ],
+    })
     await expect(bridge.acknowledgeFocus(
       lease as never, '30000000-0000-4000-8000-000000000003' as never, 1, active.target as never,
     )).resolves.toMatchObject(active)
+    await expect(bridge.commitInspection(
+      lease as never,
+      '30000000-0000-4000-8000-000000000003' as never,
+      { kind: 'page', page: { view: 'project', projectId: 228 } as never },
+    )).resolves.toEqual({ accepted: true })
     expect(fixture.call.mock.calls.map(call => call[1])).toEqual([
       'lease/close', 'context/reserve', 'context/publish', 'page/commit', 'events/wait', 'focus/ack',
+      'inspection/commit',
     ])
+  })
+
+  it('rejects a binding whose source is present without a target', async () => {
+    const fixture = connection({
+      ok: true,
+      value: { ok: true, value: {
+        lease,
+        replayBaseline: 0,
+        sessionContext: {
+          ...sessionContext,
+          binding: { source: 'tool-result', recentProjects: [], revision: 1 },
+        },
+      } },
+    })
+    const bridge = new LabelStudioContextBridge({ connection: fixture.source as never, channel: '/label-studio' })
+    await bridge.openLease(
+      'session-a' as never,
+      '20000000-0000-4000-8000-000000000002' as never,
+    ).catch((error: unknown) => {
+      expect(isLabelStudioTransportUnknown(error)).toBe(true)
+    })
   })
 
   it('separates plugin rejection, framework rejection, cancellation, and dispatched unknown', async () => {

@@ -12,6 +12,7 @@ import { LabelStudioAction } from './LabelStudioAction.tsx'
 import { LabelStudioPanelController, type LabelStudioPanelSnapshot } from './panel-state.ts'
 import type { LabelStudioContextSourceId } from '@deepseek-ai/dsh-label-studio-protocol'
 import { LabelStudioContextBridge } from './context-bridge.ts'
+import { LabelStudioCurrentPageBridge } from './current-page-bridge.ts'
 import { LabelStudioContextController, type LabelStudioContextSnapshot } from './context-state.ts'
 import type { LabelStudioPageContext } from '@deepseek-ai/dsh-label-studio-protocol'
 import { parseLabelStudioTargetInput, type LabelStudioTargetInput } from './page-url.ts'
@@ -29,11 +30,15 @@ export {
   LabelStudioContextBridge,
 } from './context-bridge.ts'
 export type { LabelStudioBridgeFailure } from './context-bridge.ts'
+export { LabelStudioCurrentPageBridge } from './current-page-bridge.ts'
+export type { LabelStudioInspectionRpc } from './current-page-bridge.ts'
 export type {
   LabelStudioControlledPage,
   LabelStudioContextSnapshot,
+  LabelStudioInspectionStatus,
   LabelStudioSessionContextStatus,
   LabelStudioSyncStatus,
+  LabelStudioWebhookStatus,
 } from './context-state.ts'
 export { LabelStudioContextController } from './context-state.ts'
 export { buildLabelStudioPageUrl, parseLabelStudioTargetInput } from './page-url.ts'
@@ -46,9 +51,14 @@ declare global {
     /** Host-validated Label Studio browser endpoint. */
     __DSH_LABEL_STUDIO__?: {
       baseUrl: string
+      frameBaseUrl: string
+      frameCapability: string
+      inspectionProtocol: 'dsh-label-studio-page/v1'
+      currentPageTimeoutMs: number
       contextOpenRetryMs: number
       contextCloseTimeoutMs: number
       eventHistorySize: number
+      webhookStatus?: 'disabled' | 'ready' | 'unavailable'
     }
   }
 }
@@ -75,6 +85,7 @@ export interface LabelStudioRootInjected {
   baseUrl: string
   bindSession: (sessionId: SessionId | undefined) => void
   confirmApplied: (navigationRevision: number) => void
+  attachFrame: (frame: HTMLIFrameElement | null) => void
   selectTarget: (input: LabelStudioTargetInput) => Promise<void>
   selectPage: (page: LabelStudioPageContext) => Promise<void>
   close: () => void
@@ -88,11 +99,18 @@ function readBootConfig(): NonNullable<Window['__DSH_LABEL_STUDIO__']> {
   const config = window.__DSH_LABEL_STUDIO__
   if (config === undefined || config.baseUrl === '') throw new Error('label-studio client: missing browser boot config')
   try { new URL(config.baseUrl) } catch { throw new Error('label-studio client: invalid browser boot baseUrl') }
-  for (const field of ['contextOpenRetryMs', 'contextCloseTimeoutMs', 'eventHistorySize'] as const) {
+  for (const field of [
+    'contextOpenRetryMs', 'contextCloseTimeoutMs', 'eventHistorySize', 'currentPageTimeoutMs',
+  ] as const) {
     if (!Number.isSafeInteger(config[field]) || config[field] <= 0) {
       throw new Error(`label-studio client: invalid browser boot ${field}`)
     }
   }
+  if (config.frameBaseUrl === '' || config.frameCapability === ''
+    || config.inspectionProtocol !== 'dsh-label-studio-page/v1') {
+    throw new Error('label-studio client: invalid frame boot config')
+  }
+  try { new URL(config.frameBaseUrl) } catch { throw new Error('label-studio client: invalid frame boot baseUrl') }
   return config
 }
 
@@ -102,9 +120,9 @@ function readBootConfig(): NonNullable<Window['__DSH_LABEL_STUDIO__']> {
  */
 export function apply(ctx: ClientContext): void {
   const boot = readBootConfig()
-  const baseUrl = boot.baseUrl
+  const baseUrl = boot.frameBaseUrl
   const layout = new LabelStudioLayoutController()
-  const panel = new LabelStudioPanelController(baseUrl)
+  const panel = new LabelStudioPanelController(boot.frameBaseUrl, boot.baseUrl)
   const setOpen = (open: boolean): void => {
     if (panel.store.getSnapshot().open === open) return
     panel.setOpen(open)
@@ -113,16 +131,25 @@ export function apply(ctx: ClientContext): void {
   }
   const connection = ctx.get('connection') as ConnectionHandle
   const bridge = new LabelStudioContextBridge({ connection, channel: '/label-studio' })
+  const currentPages = new LabelStudioCurrentPageBridge(
+    bridge,
+    () => panel.currentFrameWindow(),
+    new URL(boot.frameBaseUrl).origin,
+    boot.inspectionProtocol,
+    boot.frameCapability,
+  )
   const sourceId = globalThis.crypto.randomUUID() as LabelStudioContextSourceId
   const contexts = new LabelStudioContextController(bridge, {
     setOpen,
     applyPage: page => panel.applyPage(page),
     clearPage: () => { panel.clearPage() },
     reloadPage: () => { panel.reloadPage() },
+    inspectCurrentPage: (event, lease, signal) => currentPages.inspect(event, lease, signal),
   }, sourceId, {
     contextOpenRetryMs: boot.contextOpenRetryMs,
     contextCloseTimeoutMs: boot.contextCloseTimeoutMs,
     eventHistorySize: boot.eventHistorySize,
+    ...(boot.webhookStatus === undefined ? {} : { webhookStatus: boot.webhookStatus }),
   })
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'label-studio: dictionaries')
@@ -145,6 +172,10 @@ export function apply(ctx: ClientContext): void {
           baseUrl,
           bindSession: (sessionId) => { contexts.bindSession(sessionId) },
           confirmApplied: (revision) => { panel.confirmApplied(revision) },
+          attachFrame: (frame) => {
+            currentPages.cancel()
+            panel.attachFrame(frame)
+          },
           selectTarget: input => contexts.selectPage(parseLabelStudioTargetInput(input)),
           selectPage: page => contexts.selectPage(page),
           close: () => { setOpen(false) },
@@ -180,6 +211,7 @@ export function apply(ctx: ClientContext): void {
 
   ctx.effect(() => async () => {
     await contexts.dispose()
+    currentPages.dispose()
     panel.dispose()
   }, 'label-studio: browser context lifecycle')
 }

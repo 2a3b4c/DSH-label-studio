@@ -19,6 +19,7 @@ import type {
 import { LabelStudioChangeBroker } from '../src/change-broker.ts'
 import { LabelStudioContextRegistry } from '../src/context-registry.ts'
 import { registerLabelStudioContextRpc } from '../src/context-rpc.ts'
+import { LabelStudioCurrentPageBroker } from '../src/current-page-broker.ts'
 import {
   labelStudioFocusCorrelationId,
   labelStudioProjectId,
@@ -141,15 +142,17 @@ function setup(options: {
   const registry = new LabelStudioContextRegistry(30_000)
   const sessionContexts = contextStore(options.sessionContext)
   const broker = new LabelStudioChangeBroker(registry, 8, sessionContexts.store)
+  const currentPages = new LabelStudioCurrentPageBroker(registry, broker)
   const gate = new LabelStudioOperationGate()
   const dispose = registerLabelStudioContextRpc(
-    ctx, registry, broker, sessionContexts.store, gate, { eventWaitTimeoutMs: 5 },
+    ctx, registry, broker, sessionContexts.store, gate, { eventWaitTimeoutMs: 5 }, currentPages,
   )
   expect(handle).toHaveBeenCalledWith('/label-studio', expect.any(Function))
   return {
     ctx,
     registry,
     broker,
+    currentPages,
     gate,
     list,
     sessionContexts,
@@ -295,6 +298,37 @@ describe('Label Studio context RPC', () => {
     const invalid = inner(await fixture.call('context/publish', { secret }))
     expect(invalid).toMatchObject({ ok: false, error: { code: 'invalid-request', details: {} } })
     expect(JSON.stringify(invalid)).not.toContain(secret)
+    await fixture.dispose()
+    await fixture.broker.dispose()
+  })
+
+  it('validates and accepts only the exact current-page inspection receipt', async () => {
+    const fixture = setup()
+    const opened = inner(await fixture.call('lease/open', { sessionId: SESSION, sourceId: SOURCE })) as {
+      value: { lease: { leaseId: string; generation: number } }
+    }
+    const lease = {
+      leaseId: opened.value.lease.leaseId,
+      generation: opened.value.lease.generation,
+    }
+    const pending = fixture.currentPages.request(
+      { sessionId: SESSION, createdAt: CREATED_AT }, 1_000, new AbortController().signal,
+    )
+    const event = (await fixture.broker.wait(SESSION, 0, 10, new AbortController().signal))
+      .events.find(candidate => candidate.kind === 'inspect-current-page')
+    if (event?.kind !== 'inspect-current-page') throw new Error('inspection event missing')
+    expect(inner(await fixture.call('inspection/commit', {
+      ...lease,
+      inspectionId: event.inspectionId,
+      outcome: { kind: 'page', page: { view: 'task', projectId: 228, taskId: 486 } },
+    }))).toEqual({ ok: true, value: { accepted: true } })
+    await expect(pending).resolves.toEqual({ view: 'task', projectId: 228, taskId: 486 })
+    expect(inner(await fixture.call('inspection/commit', {
+      ...lease,
+      inspectionId: event.inspectionId,
+      outcome: { kind: 'page', page: { view: 'task', projectId: 228 } },
+    }))).toMatchObject({ ok: false, error: { code: 'invalid-request' } })
+    fixture.currentPages.dispose()
     await fixture.dispose()
     await fixture.broker.dispose()
   })

@@ -10,16 +10,16 @@ function read(relativePath: string): string {
 }
 
 describe('Label Studio bilingual package documentation', () => {
-  it('documents the bounded Session history and seven-endpoint channel in both root READMEs', () => {
+  it('documents the bounded Session history and eight-endpoint channel in both root READMEs', () => {
     const english = read('README.md')
     const chinese = read('README.zh.md')
 
     expect(english).toContain('| `recentProjectLimit` | `10` |')
     expect(chinese).toContain('| `recentProjectLimit` | `10` |')
-    expect(english).toContain('Seven endpoints')
-    expect(chinese).toContain('七个端点')
-    expect(english).not.toContain('Six endpoints')
-    expect(chinese).not.toContain('六个端点')
+    expect(english).toContain('Eight endpoints')
+    expect(chinese).toContain('八个端点')
+    expect(english).not.toContain('Seven endpoints')
+    expect(chinese).not.toContain('七个端点')
   })
 
   it('documents restoration, prompt isolation, and the deletion detection limit in both Client READMEs', () => {
@@ -38,6 +38,29 @@ describe('Label Studio bilingual package documentation', () => {
       expect(source).toContain('lease/open')
       expect(source).toContain('Session')
     }
+  })
+
+  it('documents binding state, on-demand inspection, passive browsing, and optional Webhooks', () => {
+    for (const relativePath of ['README.md', 'README.zh.md', 'packages/client-ui/README.md', 'packages/client-ui/README.zh.md']) {
+      const source = read(relativePath)
+      expect(source).toContain('binding')
+      expect(source).toMatch(/on-demand|按需/)
+      expect(source).toMatch(/[Pp]assive|被动/)
+      expect(source).toMatch(/unassigned|未匹配/)
+    }
+    for (const relativePath of ['packages/protocol/README.md', 'packages/protocol/README.zh.md']) {
+      const source = read(relativePath)
+      expect(source).toContain('binding')
+      expect(source).toMatch(/inspection|检查/)
+      expect(source).toContain('Webhook')
+    }
+  })
+
+  it('documents uninstall persistence and reinstall reconciliation in the installation guide', () => {
+    const source = read('INSTALL.zh.md')
+    expect(source).toContain('binding')
+    expect(source).toContain('重新安装')
+    expect(source).toContain('不会停止外部 Label Studio')
   })
 
   it('uses standalone repository paths in the Session-context monitoring documents', () => {

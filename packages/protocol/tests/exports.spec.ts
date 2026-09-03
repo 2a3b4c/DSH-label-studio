@@ -6,6 +6,7 @@ import * as protocol from '../src/index.ts'
 import type {
   LabelStudioActiveContext,
   LabelStudioActiveTarget,
+  LabelStudioBindingSnapshot,
   LabelStudioBrowserEvent,
   LabelStudioLeaseOpenResult,
   LabelStudioEventBatch,
@@ -60,6 +61,8 @@ describe('Label Studio protocol exports', () => {
     >()
     expectTypeOf<LabelStudioRecentProject>().toHaveProperty('availability')
     expectTypeOf<LabelStudioSessionContextSnapshot>().toHaveProperty('revision')
+    expectTypeOf<LabelStudioSessionContextSnapshot['binding']>()
+      .toEqualTypeOf<LabelStudioBindingSnapshot>()
     expectTypeOf<LabelStudioPageCommitRequest>().toHaveProperty('expectedSessionContextRevision')
     expectTypeOf<LabelStudioPageCommit>().toHaveProperty('navigationSequence')
     expectTypeOf<LabelStudioLeaseOpenResult['sessionContext']>()

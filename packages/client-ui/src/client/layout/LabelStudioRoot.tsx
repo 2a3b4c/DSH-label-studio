@@ -83,7 +83,7 @@ function DragHandle({ side, left, onStart, onDrag, onEnd }: DragHandleProps) {
 /** Render the original four child slots and the package-private workbench in one root. */
 export function LabelStudioRoot({
   useStore, actions, useSessions, renderSlot, SessionProvider, useLabelStudioPanel, useLabelStudioContext,
-  baseUrl, bindSession, confirmApplied, selectTarget, selectPage, close, reload, openExternal, t,
+  baseUrl, bindSession, confirmApplied, attachFrame, selectTarget, selectPage, close, reload, openExternal, t,
 }: LabelStudioRootProps) {
   const panels = useStore(state => state)
   const selectedSession = useSessions(unknownState => (unknownState as SessionSelection).current)
@@ -163,6 +163,7 @@ export function LabelStudioRoot({
       reload={reload}
       openExternal={openExternal}
       confirmApplied={confirmApplied}
+      attachFrame={attachFrame}
       selectTarget={selectTarget}
       selectPage={selectPage}
       t={t}

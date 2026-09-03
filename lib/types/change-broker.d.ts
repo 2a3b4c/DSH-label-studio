@@ -1,6 +1,6 @@
 /** Session-isolated revision history, long polling, and focus acknowledgements. */
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
-import type { LabelStudioActiveContext, LabelStudioActiveTarget, LabelStudioBrowserEvent, LabelStudioChangeReason, LabelStudioContextLeaseId, LabelStudioFocusCorrelationId, LabelStudioProjectId, LabelStudioSessionContextSnapshot, LabelStudioTargetReservation, LabelStudioTaskId } from '@deepseek-ai/dsh-label-studio-protocol';
+import type { LabelStudioActiveContext, LabelStudioActiveTarget, LabelStudioBindingSnapshot, LabelStudioBrowserEvent, LabelStudioChangeReason, LabelStudioContextLeaseId, LabelStudioFocusCorrelationId, LabelStudioPageInspectionId, LabelStudioProjectId, LabelStudioSessionContextSnapshot, LabelStudioTargetReservation, LabelStudioTaskId } from '@deepseek-ai/dsh-label-studio-protocol';
 import { type LabelStudioContextRegistry } from './context-registry.ts';
 import type { LabelStudioSessionIdentity } from './session-context-spec.ts';
 import type { LabelStudioSessionContextStore } from './session-context-store.ts';
@@ -35,6 +35,24 @@ export declare class LabelStudioChangeBroker {
     publishTaskChanged(sessionId: SessionId, taskId: LabelStudioTaskId, reason: LabelStudioChangeReason): Extract<LabelStudioBrowserEvent, {
         kind: 'task-changed';
     }>;
+    /**
+     * Publish one on-demand iframe inspection through the existing Session event stream.
+     * @param sessionId - Session whose browser lease owns the iframe.
+     * @param inspectionId - Host-generated one-shot request identity.
+     * @param deadlineAt - absolute response deadline.
+     * @returns the immutable published event.
+     */
+    publishCurrentPageInspection(sessionId: SessionId, inspectionId: LabelStudioPageInspectionId, deadlineAt: number): Extract<LabelStudioBrowserEvent, {
+        kind: 'inspect-current-page';
+    }>;
+    /** Publish a complete binding after Host-side deletion reconciliation. */
+    publishBindingChanged(sessionId: SessionId, binding: LabelStudioBindingSnapshot): Extract<LabelStudioBrowserEvent, {
+        kind: 'binding-changed';
+    }>;
+    /** Broadcast a non-sensitive unmatched-Webhook status to every current plugin lease. */
+    publishWebhookUnassigned(): void;
+    /** Broadcast current optional Webhook availability to every current plugin lease. */
+    publishWebhookStatus(status: 'ready' | 'unavailable'): void;
     /**
      * Read the current event cursor without modifying the Session.
      * @param sessionId - DSH Session identity.

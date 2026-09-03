@@ -21,4 +21,7 @@ test('Label Studio panel exposes a reversible fullscreen mode', async () => {
   assert.match(client, /inset:0/)
   assert.match(locales, /readonly 'panel\.fullscreen': "全屏标注"/)
   assert.match(locales, /readonly 'panel\.exitFullscreen': "退出全屏"/)
+  assert.match(client, /"panel\.binding": "当前绑定"/)
+  assert.match(client, /"panel\.inspection\.inspecting": "检查中"/)
+  assert.match(client, /"panel\.webhook\.unassigned": "事件未匹配当前会话"/)
 })

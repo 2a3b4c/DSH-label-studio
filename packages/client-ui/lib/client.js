@@ -90,7 +90,8 @@ window.__ModuleLoader__.load({
 		//#region src/client/panel-state.ts
 		/** Owns one browser page's workbench visibility and iframe identity. */
 		var LabelStudioPanelController = class {
-			baseUrl;
+			frameBaseUrl;
+			externalBaseUrl;
 			/** Observable browser-local panel state. */
 			store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)({
 				open: false,
@@ -99,13 +100,18 @@ window.__ModuleLoader__.load({
 				navigationRevision: 0
 			});
 			pending = /* @__PURE__ */ new Map();
-			/** @param baseUrl - Host-validated neutral Label Studio page. */
-			constructor(baseUrl) {
-				this.baseUrl = baseUrl;
+			frameWindow;
+			/**
+			* @param frameBaseUrl - isolated proxy endpoint used by the iframe.
+			* @param externalBaseUrl - direct Label Studio endpoint used outside DSH.
+			*/
+			constructor(frameBaseUrl, externalBaseUrl = frameBaseUrl) {
+				this.frameBaseUrl = frameBaseUrl;
+				this.externalBaseUrl = externalBaseUrl;
 			}
 			/**
-			* Set workbench visibility while permanently latching the first mount.
-			* @param open - requested visibility; the first open permanently latches mounted.
+			* Set workbench visibility while retaining any mounted iframe.
+			* @param open - requested visibility; opening permanently latches mounted.
 			*/
 			setOpen(open) {
 				const current = this.store.getSnapshot();
@@ -130,7 +136,7 @@ window.__ModuleLoader__.load({
 				});
 			}
 			/**
-			* Stage a controlled page URL and wait until React commits the matching iframe src.
+			* Mount if needed, stage a controlled page URL, and wait for the matching iframe src.
 			* @param page - structured Label Studio page.
 			* @returns promise resolved by {@link confirmApplied}.
 			*/
@@ -140,8 +146,9 @@ window.__ModuleLoader__.load({
 				const navigationRevision = current.navigationRevision + 1;
 				this.store.set({
 					...current,
+					mounted: true,
 					navigationRevision,
-					targetUrl: buildLabelStudioPageUrl(this.baseUrl, page)
+					targetUrl: buildLabelStudioPageUrl(this.frameBaseUrl, page)
 				});
 				return new Promise((resolve, reject) => {
 					this.pending.set(navigationRevision, {
@@ -175,12 +182,26 @@ window.__ModuleLoader__.load({
 			reloadPage() {
 				if (this.store.getSnapshot().targetUrl !== void 0) this.reload();
 			}
+			/** Record the currently mounted iframe window for one-shot inspection. */
+			attachFrame(frame) {
+				this.frameWindow = frame?.contentWindow ?? void 0;
+			}
+			/** Return the currently mounted iframe window without querying the DOM. */
+			currentFrameWindow() {
+				return this.frameWindow;
+			}
 			/** Open the controlled target, or the neutral endpoint, outside the dock. */
 			openExternal() {
-				window.open(this.store.getSnapshot().targetUrl ?? this.baseUrl, "_blank", "noopener,noreferrer");
+				const targetUrl = this.store.getSnapshot().targetUrl;
+				const url = targetUrl === void 0 ? this.externalBaseUrl : (() => {
+					const target = new URL(targetUrl);
+					return new URL(`${target.pathname}${target.search}${target.hash}`, `${this.externalBaseUrl}/`).href;
+				})();
+				window.open(url, "_blank", "noopener,noreferrer");
 			}
 			/** Reject outstanding DOM confirmations during plugin teardown. */
 			dispose() {
+				this.frameWindow = void 0;
 				this.rejectPending("label-studio panel: disposed");
 			}
 			rejectPending(message) {
@@ -260,7 +281,7 @@ window.__ModuleLoader__.load({
 		function isLabelStudioPluginFailure(error) {
 			return isRecord(error) && error.kind === "plugin";
 		}
-		/** Calls and validates the plugin's seven fixed RPC endpoints. */
+		/** Calls and validates the plugin's eight fixed RPC endpoints. */
 		var LabelStudioContextBridge = class {
 			connection;
 			channel;
@@ -387,6 +408,24 @@ window.__ModuleLoader__.load({
 					target: targetWire(target)
 				}, parseActiveContext, signal);
 			}
+			/**
+			* Submit one exact current-page inspection outcome.
+			* @param lease - active browser lease.
+			* @param inspectionId - Host-issued inspection identity.
+			* @param outcome - validated structured iframe result.
+			* @param signal - Session/Connection generation cancellation.
+			* @returns idempotent Host acceptance receipt.
+			*/
+			commitInspection(lease, inspectionId, outcome, signal) {
+				return this.mutate("inspection/commit", {
+					...leaseFields(lease),
+					inspectionId,
+					outcome
+				}, (value) => {
+					if (record$1(value, "inspection receipt").accepted !== true) throw new Error("invalid inspection receipt");
+					return { accepted: true };
+				}, signal);
+			}
 			mutate(endpoint, payload, parse, signal) {
 				return this.call(endpoint, payload, parse, signal, true);
 			}
@@ -450,7 +489,7 @@ window.__ModuleLoader__.load({
 			if (!Number.isSafeInteger(value) || Number(value) < 0) throw new Error(`invalid ${field}`);
 			return Number(value);
 		}
-		function positive(value, field) {
+		function positive$1(value, field) {
 			const result = integer(value, field);
 			if (result === 0) throw new Error(`invalid ${field}`);
 			return result;
@@ -459,74 +498,116 @@ window.__ModuleLoader__.load({
 			if (typeof value !== "string" || value === "") throw new Error(`invalid ${field}`);
 			return value;
 		}
-		function record(value, field) {
+		function record$1(value, field) {
 			if (!isRecord(value)) throw new Error(`invalid ${field}`);
 			return value;
 		}
 		function recordBoolean(value, field) {
-			const object = record(value, "result");
+			const object = record$1(value, "result");
 			if (typeof object[field] !== "boolean") throw new Error(`invalid ${field}`);
 			return object[field];
 		}
 		function parseLease(value) {
-			const object = record(value, "lease");
+			const object = record$1(value, "lease");
 			return {
 				leaseId: string(object.leaseId, "leaseId"),
 				generation: integer(object.generation, "generation"),
-				expiresAt: positive(object.expiresAt, "expiresAt")
+				expiresAt: positive$1(object.expiresAt, "expiresAt")
 			};
 		}
 		function parseOpen(value) {
-			const object = record(value, "open result");
+			const object = record$1(value, "open result");
 			return {
 				lease: parseLease(object.lease),
 				replayBaseline: integer(object.replayBaseline, "replayBaseline"),
 				sessionContext: parseSessionContext(object.sessionContext)
 			};
 		}
-		function parsePage(value) {
-			const object = record(value, "page");
+		function parsePage$1(value) {
+			const object = record$1(value, "page");
 			if (object.view === "projects") return { view: "projects" };
 			if (object.view === "project") return {
 				view: "project",
-				projectId: positive(object.projectId, "projectId")
+				projectId: positive$1(object.projectId, "projectId")
 			};
 			if (object.view === "task") return {
 				view: "task",
-				projectId: positive(object.projectId, "projectId"),
-				taskId: positive(object.taskId, "taskId"),
-				...object.annotationId === void 0 ? {} : { annotationId: positive(object.annotationId, "annotationId") }
+				projectId: positive$1(object.projectId, "projectId"),
+				taskId: positive$1(object.taskId, "taskId"),
+				...object.annotationId === void 0 ? {} : { annotationId: positive$1(object.annotationId, "annotationId") }
 			};
 			throw new Error("invalid page view");
 		}
 		function parseSessionContext(value) {
-			const object = record(value, "session context");
-			if (!Array.isArray(object.recentProjects)) throw new Error("invalid recentProjects");
+			const object = record$1(value, "session context");
 			return {
-				page: parsePage(object.page),
-				recentProjects: object.recentProjects.map((entry) => {
-					const recent = record(entry, "recent project");
-					if (recent.availability !== "available" && recent.availability !== "deleted") throw new Error("invalid project availability");
-					return {
-						projectId: positive(recent.projectId, "projectId"),
-						...recent.lastTaskId === void 0 ? {} : { lastTaskId: positive(recent.lastTaskId, "lastTaskId") },
-						lastVisitedAt: integer(recent.lastVisitedAt, "lastVisitedAt"),
-						availability: recent.availability
-					};
-				}),
-				revision: integer(object.revision, "revision")
+				page: parsePage$1(object.page),
+				recentProjects: parseRecentProjects(object.recentProjects),
+				revision: integer(object.revision, "revision"),
+				binding: parseBinding(object.binding)
+			};
+		}
+		function parseRecentProjects(value) {
+			if (!Array.isArray(value)) throw new Error("invalid recentProjects");
+			return value.map((entry) => {
+				const recent = record$1(entry, "recent project");
+				if (recent.availability !== "available" && recent.availability !== "deleted") throw new Error("invalid project availability");
+				return {
+					projectId: positive$1(recent.projectId, "projectId"),
+					...recent.lastTaskId === void 0 ? {} : { lastTaskId: positive$1(recent.lastTaskId, "lastTaskId") },
+					lastVisitedAt: integer(recent.lastVisitedAt, "lastVisitedAt"),
+					availability: recent.availability
+				};
+			});
+		}
+		function parseBinding(value) {
+			const object = record$1(value, "binding");
+			const recentProjects = parseRecentProjects(object.recentProjects);
+			const revision = integer(object.revision, "binding revision");
+			if (object.target === void 0) {
+				if (object.source !== void 0 || object.boundAt !== void 0) throw new Error("invalid empty binding");
+				return {
+					recentProjects,
+					revision
+				};
+			}
+			if (object.source !== "tool-result" && object.source !== "webhook" && object.source !== "current-page") throw new Error("invalid binding source");
+			const target = record$1(object.target, "binding target");
+			const projectId = positive$1(target.projectId, "projectId");
+			if (target.kind === "project") return {
+				target: {
+					kind: "project",
+					projectId
+				},
+				source: object.source,
+				boundAt: integer(object.boundAt, "boundAt"),
+				recentProjects,
+				revision
+			};
+			if (target.kind !== "task") throw new Error("invalid binding target kind");
+			return {
+				target: {
+					kind: "task",
+					projectId,
+					taskId: positive$1(target.taskId, "taskId"),
+					...target.annotationId === void 0 ? {} : { annotationId: positive$1(target.annotationId, "annotationId") }
+				},
+				source: object.source,
+				boundAt: integer(object.boundAt, "boundAt"),
+				recentProjects,
+				revision
 			};
 		}
 		function parseTarget(value) {
-			const object = record(value, "target");
+			const object = record$1(value, "target");
 			return {
-				projectId: positive(object.projectId, "projectId"),
-				taskId: positive(object.taskId, "taskId"),
-				...object.annotationId === void 0 ? {} : { annotationId: positive(object.annotationId, "annotationId") }
+				projectId: positive$1(object.projectId, "projectId"),
+				taskId: positive$1(object.taskId, "taskId"),
+				...object.annotationId === void 0 ? {} : { annotationId: positive$1(object.annotationId, "annotationId") }
 			};
 		}
 		function parseReservation(value) {
-			const object = record(value, "reservation");
+			const object = record$1(value, "reservation");
 			return {
 				lease: parseLease(object.lease),
 				targetRevision: integer(object.targetRevision, "targetRevision"),
@@ -534,19 +615,19 @@ window.__ModuleLoader__.load({
 			};
 		}
 		function parseActiveContext(value) {
-			const object = record(value, "active context");
+			const object = record$1(value, "active context");
 			return {
 				sessionId: string(object.sessionId, "sessionId"),
 				sourceId: string(object.sourceId, "sourceId"),
 				leaseId: string(object.leaseId, "leaseId"),
 				generation: integer(object.generation, "generation"),
 				targetRevision: integer(object.targetRevision, "targetRevision"),
-				expiresAt: positive(object.expiresAt, "expiresAt"),
+				expiresAt: positive$1(object.expiresAt, "expiresAt"),
 				target: parseTarget(object.target)
 			};
 		}
 		function parseTargetState(value) {
-			const object = record(value, "target state");
+			const object = record$1(value, "target state");
 			const targetRevision = integer(object.targetRevision, "targetRevision");
 			if (object.phase === "vacant") return {
 				phase: "vacant",
@@ -558,7 +639,7 @@ window.__ModuleLoader__.load({
 				target: parseTarget(object.target)
 			};
 			if (object.phase !== "reserved") throw new Error("invalid target phase");
-			const reservation = record(object.reservation, "reservation identity");
+			const reservation = record$1(object.reservation, "reservation identity");
 			if (reservation.kind === "browser") return {
 				phase: "reserved",
 				targetRevision,
@@ -578,17 +659,44 @@ window.__ModuleLoader__.load({
 			throw new Error("invalid reservation kind");
 		}
 		function parseEvent(value) {
-			const object = record(value, "event");
-			const eventRevision = positive(object.eventRevision, "eventRevision");
+			const object = record$1(value, "event");
+			const eventRevision = positive$1(object.eventRevision, "eventRevision");
 			if (object.kind === "task-changed") {
 				if (object.reason !== "prediction-created") throw new Error("invalid change reason");
 				return {
 					kind: "task-changed",
 					eventRevision,
-					taskId: positive(object.taskId, "taskId"),
+					taskId: positive$1(object.taskId, "taskId"),
 					reason: object.reason
 				};
 			}
+			if (object.kind === "inspect-current-page") return {
+				kind: "inspect-current-page",
+				eventRevision,
+				inspectionId: string(object.inspectionId, "inspectionId"),
+				deadlineAt: positive$1(object.deadlineAt, "deadlineAt")
+			};
+			if (object.kind === "webhook-unassigned") {
+				if (object.reason !== "no-matching-binding") throw new Error("invalid Webhook unassigned reason");
+				return {
+					kind: "webhook-unassigned",
+					eventRevision,
+					reason: object.reason
+				};
+			}
+			if (object.kind === "webhook-status") {
+				if (object.status !== "ready" && object.status !== "unavailable") throw new Error("invalid Webhook status");
+				return {
+					kind: "webhook-status",
+					eventRevision,
+					status: object.status
+				};
+			}
+			if (object.kind === "binding-changed") return {
+				kind: "binding-changed",
+				eventRevision,
+				binding: parseBinding(object.binding)
+			};
 			if (object.kind !== "focus-task" || typeof object.committed !== "boolean") throw new Error("invalid event kind");
 			return {
 				kind: "focus-task",
@@ -597,12 +705,12 @@ window.__ModuleLoader__.load({
 				targetRevision: integer(object.targetRevision, "targetRevision"),
 				target: parseTarget(object.target),
 				expectedSessionContextRevision: integer(object.expectedSessionContextRevision, "expectedSessionContextRevision"),
-				deadlineAt: positive(object.deadlineAt, "deadlineAt"),
+				deadlineAt: positive$1(object.deadlineAt, "deadlineAt"),
 				committed: object.committed
 			};
 		}
 		function parseEventBatch(value) {
-			const object = record(value, "event batch");
+			const object = record$1(value, "event batch");
 			if (!Array.isArray(object.events) || typeof object.resetRequired !== "boolean") throw new Error("invalid event batch");
 			return {
 				lease: parseLease(object.lease),
@@ -625,9 +733,187 @@ window.__ModuleLoader__.load({
 				"focus-conflict",
 				"focus-not-found",
 				"session-context-conflict",
-				"session-context-unavailable"
+				"session-context-unavailable",
+				"binding-missing",
+				"binding-conflict",
+				"binding-target-mismatch",
+				"current-page-unavailable",
+				"current-page-timeout",
+				"current-page-unsupported",
+				"webhook-unavailable",
+				"webhook-unassigned"
 			].includes(value.code)) return false;
 			return value.code !== "lease-conflict" || Number.isSafeInteger(value.details.retryAfterMs) && Number(value.details.retryAfterMs) > 0;
+		}
+		//#endregion
+		//#region src/client/current-page-bridge.ts
+		/** Validates iframe responses and submits exactly one matching Host receipt. */
+		var LabelStudioCurrentPageBridge = class {
+			rpc;
+			frame;
+			frameOrigin;
+			protocol;
+			capability;
+			clock;
+			pending;
+			disposed = false;
+			/**
+			* @param rpc - typed Connection RPC caller.
+			* @param frame - current iframe window supplier.
+			* @param frameOrigin - exact isolated proxy origin.
+			* @param protocol - fixed parent/iframe protocol.
+			* @param capability - ephemeral proxy capability.
+			* @param clock - epoch-millisecond clock for deterministic deadlines.
+			*/
+			constructor(rpc, frame, frameOrigin, protocol, capability, clock = Date.now) {
+				this.rpc = rpc;
+				this.frame = frame;
+				this.frameOrigin = frameOrigin;
+				this.protocol = protocol;
+				this.capability = capability;
+				this.clock = clock;
+			}
+			/**
+			* Inspect the current iframe once and forward its exact structured outcome.
+			* @param event - Host request from the Session event stream.
+			* @param lease - current browser lease.
+			* @param signal - current Session/Connection generation cancellation.
+			* @returns final inspection status after the Host accepts the response.
+			*/
+			async inspect(event, lease, signal) {
+				if (this.disposed) throw new Error("label-studio client: current-page bridge disposed");
+				signal.throwIfAborted();
+				if (this.clock() >= event.deadlineAt) throw new Error("label-studio client: inspection expired");
+				if (this.pending !== void 0) throw new Error("label-studio client: inspection already active");
+				const frame = this.frame();
+				if (frame === void 0) {
+					await this.rpc.commitInspection(lease, event.inspectionId, { kind: "unavailable" }, signal);
+					return "unavailable";
+				}
+				return new Promise((resolve, reject) => {
+					const abort = new AbortController();
+					const onAbort = () => {
+						this.rejectPending(signal.reason instanceof Error ? signal.reason : /* @__PURE__ */ new Error("label-studio client: inspection cancelled"));
+					};
+					const remaining = Math.max(1, event.deadlineAt - this.clock());
+					const timer = setTimeout(() => {
+						this.rejectPending(/* @__PURE__ */ new Error("label-studio client: inspection expired"));
+					}, remaining);
+					const cleanup = () => {
+						clearTimeout(timer);
+						signal.removeEventListener("abort", onAbort);
+						window.removeEventListener("message", this.onMessage);
+					};
+					this.pending = {
+						event,
+						lease,
+						frame,
+						abort,
+						signal,
+						cleanup,
+						resolve,
+						reject
+					};
+					signal.addEventListener("abort", onAbort, { once: true });
+					window.addEventListener("message", this.onMessage);
+					try {
+						frame.postMessage({
+							protocol: this.protocol,
+							capability: this.capability,
+							kind: "inspect-current-page",
+							inspectionId: event.inspectionId
+						}, this.frameOrigin);
+					} catch {
+						const pending = this.takePending();
+						if (pending === void 0) return;
+						this.rpc.commitInspection(lease, event.inspectionId, { kind: "unavailable" }, signal).then(() => {
+							pending.resolve("unavailable");
+						}, pending.reject);
+					}
+				});
+			}
+			/** Cancel the current Session or Connection generation. */
+			cancel() {
+				this.rejectPending(/* @__PURE__ */ new Error("label-studio client: inspection cancelled"));
+			}
+			/** Remove listeners and permanently reject later work. */
+			dispose() {
+				if (this.disposed) return;
+				this.disposed = true;
+				this.rejectPending(/* @__PURE__ */ new Error("label-studio client: current-page bridge disposed"));
+			}
+			onMessage = (event) => {
+				const pending = this.pending;
+				if (pending === void 0 || event.source !== pending.frame || event.origin !== this.frameOrigin) return;
+				const outcome = parseResponse(event.data, this.protocol, String(pending.event.inspectionId));
+				if (outcome === void 0) return;
+				const accepted = this.takePending();
+				if (accepted === void 0) return;
+				this.rpc.commitInspection(accepted.lease, accepted.event.inspectionId, outcome, AbortSignal.any([accepted.signal, accepted.abort.signal])).then(() => {
+					accepted.resolve(inspectionStatus(outcome));
+				}, accepted.reject);
+			};
+			rejectPending(reason) {
+				const pending = this.takePending();
+				if (pending !== void 0) {
+					pending.abort.abort(reason);
+					pending.reject(reason);
+				}
+			}
+			takePending() {
+				const pending = this.pending;
+				if (pending === void 0) return void 0;
+				this.pending = void 0;
+				pending.cleanup();
+				return pending;
+			}
+		};
+		function inspectionStatus(outcome) {
+			return outcome.kind === "page" ? "ready" : outcome.kind;
+		}
+		function parseResponse(value, protocol, inspectionId) {
+			if (!record(value) || value.protocol !== protocol || value.kind !== "current-page" || value.inspectionId !== inspectionId || !record(value.outcome)) return void 0;
+			if (value.outcome.kind === "unsupported") return { kind: "unsupported" };
+			if (value.outcome.kind === "unavailable") return { kind: "unavailable" };
+			if (value.outcome.kind !== "page") return void 0;
+			const page = parsePage(value.outcome.page);
+			return page === void 0 ? void 0 : {
+				kind: "page",
+				page
+			};
+		}
+		function parsePage(value) {
+			if (!record(value)) return void 0;
+			if (value.view === "projects" && exactKeys(value, ["view"])) return { view: "projects" };
+			if (value.view === "project" && exactKeys(value, ["view", "projectId"]) && positive(value.projectId)) return {
+				view: "project",
+				projectId: value.projectId
+			};
+			if (value.view !== "task" || !exactKeys(value, value.annotationId === void 0 ? [
+				"view",
+				"projectId",
+				"taskId"
+			] : [
+				"view",
+				"projectId",
+				"taskId",
+				"annotationId"
+			]) || !positive(value.projectId) || !positive(value.taskId) || value.annotationId !== void 0 && !positive(value.annotationId)) return void 0;
+			return {
+				view: "task",
+				projectId: value.projectId,
+				taskId: value.taskId,
+				...value.annotationId === void 0 ? {} : { annotationId: value.annotationId }
+			};
+		}
+		function record(value) {
+			return typeof value === "object" && value !== null && !Array.isArray(value);
+		}
+		function positive(value) {
+			return Number.isSafeInteger(value) && Number(value) > 0;
+		}
+		function exactKeys(value, keys) {
+			return Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 		}
 		//#endregion
 		//#region src/client/context-state.ts
@@ -674,6 +960,9 @@ window.__ModuleLoader__.load({
 					bufferedEventCount: 0,
 					sessionContext: emptySessionContext(),
 					sessionContextStatus: "idle",
+					inspectionStatus: "idle",
+					webhookStatus: options.webhookStatus ?? "disabled",
+					webhookUnassigned: false,
 					status: "no-session"
 				});
 				this.offHost = bridge.onHostChanged(() => {
@@ -686,7 +975,8 @@ window.__ModuleLoader__.load({
 			*/
 			bindSession(sessionId) {
 				if (this.disposed || this.store.getSnapshot().sessionId === sessionId) return;
-				const previous = this.store.getSnapshot().lease;
+				const previousSnapshot = this.store.getSnapshot();
+				const previous = previousSnapshot.lease;
 				this.sessionEpoch += 1;
 				this.navigationEpoch += 1;
 				this.cancelGeneration();
@@ -704,6 +994,9 @@ window.__ModuleLoader__.load({
 					bufferedEventCount: 0,
 					sessionContext: emptySessionContext(),
 					sessionContextStatus: sessionId === void 0 ? "idle" : "restoring",
+					inspectionStatus: "idle",
+					webhookStatus: previousSnapshot.webhookStatus,
+					webhookUnassigned: false,
 					status: sessionId === void 0 ? "no-session" : "leasing"
 				});
 				if (sessionId !== void 0 && this.bridge.currentHost() !== void 0) this.startOpen();
@@ -811,7 +1104,7 @@ window.__ModuleLoader__.load({
 						status: "syncing",
 						error: void 0
 					});
-					const restore = this.navigationQueue.catch(() => {}).then(() => this.performPageSelection(result.sessionContext.page, true));
+					const restore = this.navigationQueue.catch(() => {}).then(() => this.performPageSelection(restorationPage(result.sessionContext), true));
 					this.navigationQueue = restore;
 					restore.catch(() => {}).finally(() => {
 						if (this.current(epoch)) this.startWait(result.lease);
@@ -938,6 +1231,50 @@ window.__ModuleLoader__.load({
 						this.commitEvent(event.eventRevision);
 						continue;
 					}
+					if (event.kind === "inspect-current-page") {
+						const lease = this.store.getSnapshot().lease;
+						if (lease === void 0) return;
+						this.patch({ inspectionStatus: "inspecting" });
+						try {
+							const outcome = await this.page.inspectCurrentPage(event, lease, this.generationSignal());
+							if (!this.current(epoch)) return;
+							this.patch({ inspectionStatus: outcome ?? "ready" });
+						} catch (error) {
+							if (!this.current(epoch)) return;
+							if (isLabelStudioTransportUnknown(error)) {
+								this.patch({ inspectionStatus: "unavailable" });
+								return;
+							}
+							this.patch({ inspectionStatus: inspectionFailureStatus(error) });
+						}
+						this.commitEvent(event.eventRevision);
+						continue;
+					}
+					if (event.kind === "binding-changed") {
+						const current = this.store.getSnapshot().sessionContext;
+						this.patch({
+							sessionContext: {
+								...current,
+								binding: event.binding
+							},
+							webhookUnassigned: false
+						});
+						this.commitEvent(event.eventRevision);
+						continue;
+					}
+					if (event.kind === "webhook-status") {
+						this.patch({
+							webhookStatus: event.status,
+							...event.status === "ready" ? { webhookUnassigned: false } : {}
+						});
+						this.commitEvent(event.eventRevision);
+						continue;
+					}
+					if (event.kind === "webhook-unassigned") {
+						this.patch({ webhookUnassigned: true });
+						this.commitEvent(event.eventRevision);
+						continue;
+					}
 					if (context.targetRevision === event.targetRevision && context.phase === "committed" && sameTarget(context.target, event.target)) {
 						this.patch({
 							target: context.target,
@@ -1018,7 +1355,7 @@ window.__ModuleLoader__.load({
 				const epoch = this.epoch();
 				const navigationEpoch = ++this.navigationEpoch;
 				const sequence = restoring && page.view !== "task" ? snapshot.navigationSequence : Number(snapshot.navigationSequence) + 1;
-				this.page.setOpen(true);
+				if (!restoring) this.page.setOpen(true);
 				this.patch({
 					navigationSequence: sequence,
 					sessionContextStatus: restoring ? "restoring" : "committing",
@@ -1346,6 +1683,9 @@ window.__ModuleLoader__.load({
 			if (typeof error === "object" && error !== null && "kind" in error && error.kind === "framework" && "error" in error && typeof error.error === "object" && error.error !== null && "message" in error.error) return String(error.error.message);
 			return error instanceof Error ? error.message : "Label Studio synchronization failed";
 		}
+		function inspectionFailureStatus(error) {
+			return bridgeMessage(error).includes("expired") ? "timeout" : "unavailable";
+		}
 		function toError(error) {
 			return error instanceof Error ? error : new Error(bridgeMessage(error));
 		}
@@ -1363,11 +1703,29 @@ window.__ModuleLoader__.load({
 			if (pending.targetRevision === void 0) throw new Error("label-studio client: missing target reservation revision");
 			return pending.targetRevision;
 		}
+		function restorationPage(context) {
+			if (context.page.view !== "projects" || context.binding.target === void 0) return context.page;
+			const target = context.binding.target;
+			if (target.kind === "project") return {
+				view: "project",
+				projectId: target.projectId
+			};
+			return {
+				view: "task",
+				projectId: target.projectId,
+				taskId: target.taskId,
+				...target.annotationId === void 0 ? {} : { annotationId: target.annotationId }
+			};
+		}
 		function emptySessionContext() {
 			return {
 				page: { view: "projects" },
 				recentProjects: [],
-				revision: 0
+				revision: 0,
+				binding: {
+					recentProjects: [],
+					revision: 0
+				}
 			};
 		}
 		function pageOfTarget(target) {
@@ -1397,7 +1755,8 @@ window.__ModuleLoader__.load({
 					lastVisitedAt: visitedAt,
 					availability: "available"
 				}, ...prior],
-				revision: event.expectedSessionContextRevision + 1
+				revision: event.expectedSessionContextRevision + 1,
+				binding: current.binding
 			};
 		}
 		function contextFailureStatus(error) {
@@ -1426,6 +1785,24 @@ window.__ModuleLoader__.load({
 			"panel.recentProjects": "最近项目",
 			"panel.project": "项目",
 			"panel.deleted": "已删除",
+			"panel.binding": "当前绑定",
+			"panel.unbound": "未绑定",
+			"panel.bindingSource": "绑定来源",
+			"panel.source.tool-result": "工具结果",
+			"panel.source.webhook": "Webhook",
+			"panel.source.current-page": "按需检查",
+			"panel.inspection": "页面检查",
+			"panel.inspection.idle": "未请求",
+			"panel.inspection.inspecting": "检查中",
+			"panel.inspection.ready": "已就绪",
+			"panel.inspection.timeout": "已超时",
+			"panel.inspection.unsupported": "页面不支持",
+			"panel.inspection.unavailable": "不可用",
+			"panel.webhook": "Webhook",
+			"panel.webhook.disabled": "已关闭",
+			"panel.webhook.ready": "已就绪",
+			"panel.webhook.unavailable": "不可用",
+			"panel.webhook.unassigned": "事件未匹配当前会话",
 			"panel.bridgeLimitation": "仅同步插件控制的导航，无法观察页面内任意点击或未保存草稿。",
 			"status.no-session": "未选择 DSH 会话",
 			"status.no-task": "未选择任务",
@@ -1457,6 +1834,24 @@ window.__ModuleLoader__.load({
 			"panel.recentProjects": "Recent projects",
 			"panel.project": "Project",
 			"panel.deleted": "deleted",
+			"panel.binding": "Current binding",
+			"panel.unbound": "Unbound",
+			"panel.bindingSource": "Binding source",
+			"panel.source.tool-result": "Tool result",
+			"panel.source.webhook": "Webhook",
+			"panel.source.current-page": "On-demand inspection",
+			"panel.inspection": "Page inspection",
+			"panel.inspection.idle": "Not requested",
+			"panel.inspection.inspecting": "Inspecting",
+			"panel.inspection.ready": "Ready",
+			"panel.inspection.timeout": "Timed out",
+			"panel.inspection.unsupported": "Unsupported page",
+			"panel.inspection.unavailable": "Unavailable",
+			"panel.webhook": "Webhook",
+			"panel.webhook.disabled": "Disabled",
+			"panel.webhook.ready": "Ready",
+			"panel.webhook.unavailable": "Unavailable",
+			"panel.webhook.unassigned": "Event did not match this Session",
 			"panel.bridgeLimitation": "Only plugin-controlled navigation is synchronized. Arbitrary iframe clicks and unsaved drafts are not observed.",
 			"status.no-session": "No DSH Session selected",
 			"status.no-task": "No task selected",
@@ -1471,7 +1866,7 @@ window.__ModuleLoader__.load({
 		};
 		//#endregion
 		//#region \0dsh-label-studio-css:/Users/xinlongzhang/PycharmProjects/dsh-label-studio-plugin-package/packages/client-ui/src/client/LabelStudioPanel.module.css.mjs
-		const css$1 = ".Q-ow9W_panel{box-sizing:border-box;border-left:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);flex-direction:column;min-width:0;height:100%;display:flex;overflow:hidden}.Q-ow9W_panel[hidden]{display:none}.Q-ow9W_panel[data-fullscreen]{z-index:100;border-left:0;height:100dvh;position:fixed;inset:0;width:100%!important}.Q-ow9W_header{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);flex:none;justify-content:space-between;align-items:center;gap:12px;min-height:44px;padding:0 10px 0 14px;display:flex}.Q-ow9W_title{color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;overflow:hidden}.Q-ow9W_actions{flex:none;gap:2px;display:flex}.Q-ow9W_targetBar{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);grid-template-columns:minmax(64px,.8fr) minmax(64px,.8fr) minmax(64px,.8fr) auto minmax(96px,1.4fr);gap:6px;padding:8px 10px;display:grid}.Q-ow9W_targetBar input,.Q-ow9W_targetBar button{box-sizing:border-box;min-width:0;height:28px}.Q-ow9W_targetBar output{color:var(--dsw-alias-label-secondary);text-overflow:ellipsis;white-space:nowrap;align-self:center;font-size:11px;overflow:hidden}.Q-ow9W_contextBar{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);gap:5px;padding:7px 10px;font-size:11px;display:grid}.Q-ow9W_currentPage{color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.Q-ow9W_recentProjects{gap:5px;display:flex;overflow-x:auto}.Q-ow9W_recentProjects button{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);min-height:25px;color:var(--dsw-alias-label-primary);cursor:pointer;border-radius:6px;flex:none;padding:2px 8px}.Q-ow9W_recentProjects button:disabled{color:var(--dsw-alias-label-secondary);cursor:not-allowed;opacity:.65}.Q-ow9W_bridgeLimitation{margin:0;line-height:1.35}.Q-ow9W_iconButton{width:30px;height:30px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;border-radius:8px;place-items:center;padding:0;display:grid}.Q-ow9W_iconButton:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.Q-ow9W_iframe{background:var(--dsw-alias-bg-base);border:0;flex:1;width:100%;min-height:0}";
+		const css$1 = ".Q-ow9W_panel{box-sizing:border-box;border-left:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);flex-direction:column;min-width:0;height:100%;display:flex;overflow:hidden}.Q-ow9W_panel[hidden]{display:none}.Q-ow9W_panel[data-fullscreen]{z-index:100;border-left:0;height:100dvh;position:fixed;inset:0;width:100%!important}.Q-ow9W_header{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);flex:none;justify-content:space-between;align-items:center;gap:12px;min-height:44px;padding:0 10px 0 14px;display:flex}.Q-ow9W_title{color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;overflow:hidden}.Q-ow9W_actions{flex:none;gap:2px;display:flex}.Q-ow9W_targetBar{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);grid-template-columns:minmax(64px,.8fr) minmax(64px,.8fr) minmax(64px,.8fr) auto minmax(96px,1.4fr);gap:6px;padding:8px 10px;display:grid}.Q-ow9W_targetBar input,.Q-ow9W_targetBar button{box-sizing:border-box;min-width:0;height:28px}.Q-ow9W_targetBar output{color:var(--dsw-alias-label-secondary);text-overflow:ellipsis;white-space:nowrap;align-self:center;font-size:11px;overflow:hidden}.Q-ow9W_contextBar{border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);gap:5px;padding:7px 10px;font-size:11px;display:grid}.Q-ow9W_currentPage{color:var(--dsw-alias-label-primary);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.Q-ow9W_contextFacts{flex-wrap:wrap;gap:5px;display:flex}.Q-ow9W_statusBadge{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);border-radius:999px;padding:2px 7px}.Q-ow9W_recentProjects{gap:5px;display:flex;overflow-x:auto}.Q-ow9W_recentProjects button{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);min-height:25px;color:var(--dsw-alias-label-primary);cursor:pointer;border-radius:6px;flex:none;padding:2px 8px}.Q-ow9W_recentProjects button:disabled{color:var(--dsw-alias-label-secondary);cursor:not-allowed;opacity:.65}.Q-ow9W_bridgeLimitation{margin:0;line-height:1.35}.Q-ow9W_iconButton{width:30px;height:30px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;border-radius:8px;place-items:center;padding:0;display:grid}.Q-ow9W_iconButton:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.Q-ow9W_iframe{background:var(--dsw-alias-bg-base);border:0;flex:1;width:100%;min-height:0}";
 		const tagId$1 = "dsh-label-studio-workbench/LabelStudioPanel.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -1481,22 +1876,24 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var LabelStudioPanel_module_css_default = {
+			"statusBadge": "Q-ow9W_statusBadge",
+			"contextFacts": "Q-ow9W_contextFacts",
+			"iconButton": "Q-ow9W_iconButton",
+			"header": "Q-ow9W_header",
+			"panel": "Q-ow9W_panel",
+			"iframe": "Q-ow9W_iframe",
+			"targetBar": "Q-ow9W_targetBar",
 			"actions": "Q-ow9W_actions",
+			"contextBar": "Q-ow9W_contextBar",
 			"currentPage": "Q-ow9W_currentPage",
 			"title": "Q-ow9W_title",
-			"contextBar": "Q-ow9W_contextBar",
-			"header": "Q-ow9W_header",
-			"bridgeLimitation": "Q-ow9W_bridgeLimitation",
-			"iconButton": "Q-ow9W_iconButton",
 			"recentProjects": "Q-ow9W_recentProjects",
-			"targetBar": "Q-ow9W_targetBar",
-			"iframe": "Q-ow9W_iframe",
-			"panel": "Q-ow9W_panel"
+			"bridgeLimitation": "Q-ow9W_bridgeLimitation"
 		};
 		//#endregion
 		//#region src/client/LabelStudioPanel.tsx
-		/** Render the iframe only after first open and retain it while hidden. */
-		function LabelStudioPanel({ useLabelStudioPanel, useLabelStudioContext, baseUrl, open, width, close, reload, openExternal, confirmApplied, selectTarget, selectPage, t }) {
+		/** Render a restored or explicitly opened iframe and retain it while hidden. */
+		function LabelStudioPanel({ useLabelStudioPanel, useLabelStudioContext, baseUrl, open, width, close, reload, openExternal, confirmApplied, attachFrame, selectTarget, selectPage, t }) {
 			const state = useLabelStudioPanel((snapshot) => snapshot);
 			const context = useLabelStudioContext((snapshot) => snapshot);
 			const [projectId, setProjectId] = (0, react.useState)("");
@@ -1504,6 +1901,7 @@ window.__ModuleLoader__.load({
 			const [annotationId, setAnnotationId] = (0, react.useState)("");
 			const [inputError, setInputError] = (0, react.useState)();
 			const [fullscreen, setFullscreen] = (0, react.useState)(false);
+			const recentProjects = context.sessionContext.binding.recentProjects.length > 0 ? context.sessionContext.binding.recentProjects : context.sessionContext.recentProjects;
 			(0, react.useEffect)(() => {
 				if (!open && fullscreen) setFullscreen(false);
 			}, [fullscreen, open]);
@@ -1698,10 +2096,45 @@ window.__ModuleLoader__.load({
 									pageName(context.sessionContext.page, t)
 								]
 							}),
-							context.sessionContext.recentProjects.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("nav", {
+							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+								className: LabelStudioPanel_module_css_default.currentPage,
+								children: [
+									t("panel.binding"),
+									": ",
+									bindingName(context.sessionContext.binding.target, t)
+								]
+							}),
+							context.sessionContext.binding.source !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+								className: LabelStudioPanel_module_css_default.currentPage,
+								children: [
+									t("panel.bindingSource"),
+									": ",
+									t(`panel.source.${context.sessionContext.binding.source}`)
+								]
+							}),
+							/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+								className: LabelStudioPanel_module_css_default.contextFacts,
+								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+									className: LabelStudioPanel_module_css_default.statusBadge,
+									children: [
+										t("panel.inspection"),
+										": ",
+										t(`panel.inspection.${context.inspectionStatus}`)
+									]
+								}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+									className: LabelStudioPanel_module_css_default.statusBadge,
+									children: [
+										t("panel.webhook"),
+										": ",
+										t(`panel.webhook.${context.webhookStatus}`),
+										context.webhookUnassigned ? ` · ${t("panel.webhook.unassigned")}` : ""
+									]
+								})]
+							}),
+							recentProjects.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("nav", {
 								className: LabelStudioPanel_module_css_default.recentProjects,
 								"aria-label": t("panel.recentProjects"),
-								children: context.sessionContext.recentProjects.map((project) => {
+								children: recentProjects.map((project) => {
 									const deleted = project.availability === "deleted";
 									const label = `${t("panel.project")} ${String(project.projectId)}${deleted ? ` (${t("panel.deleted")})` : ""}`;
 									return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
@@ -1725,6 +2158,7 @@ window.__ModuleLoader__.load({
 						]
 					}),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("iframe", {
+						ref: attachFrame,
 						className: LabelStudioPanel_module_css_default.iframe,
 						src: state.targetUrl ?? baseUrl,
 						title: t("panel.title"),
@@ -1738,6 +2172,12 @@ window.__ModuleLoader__.load({
 			if (page.view === "project") return `${t("panel.project")} ${String(page.projectId)}`;
 			const annotation = page.annotationId === void 0 ? "" : ` / ${t("panel.annotationId")} ${String(page.annotationId)}`;
 			return `${t("panel.project")} ${String(page.projectId)} / ${t("panel.taskId")} ${String(page.taskId)}${annotation}`;
+		}
+		function bindingName(target, t) {
+			if (target === void 0) return t("panel.unbound");
+			if (target.kind === "project") return `${t("panel.project")} ${String(target.projectId)}`;
+			const annotation = target.annotationId === void 0 ? "" : ` / ${t("panel.annotationId")} ${String(target.annotationId)}`;
+			return `${t("panel.project")} ${String(target.projectId)} / ${t("panel.taskId")} ${String(target.taskId)}${annotation}`;
 		}
 		/** Viewport width that activates narrow sidebar behavior. */
 		const SIDEBAR_AUTO_COLLAPSE = 1024;
@@ -1811,12 +2251,12 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var LabelStudioRoot_module_css_default = {
-			"overlayLayer": "STqelW_overlayLayer",
-			"frame": "STqelW_frame",
-			"conversationCol": "STqelW_conversationCol",
 			"sidebarCol": "STqelW_sidebarCol",
+			"overlayLayer": "STqelW_overlayLayer",
+			"handle": "STqelW_handle",
 			"detailsCol": "STqelW_detailsCol",
-			"handle": "STqelW_handle"
+			"frame": "STqelW_frame",
+			"conversationCol": "STqelW_conversationCol"
 		};
 		//#endregion
 		//#region src/client/layout/LabelStudioRoot.tsx
@@ -1874,7 +2314,7 @@ window.__ModuleLoader__.load({
 			});
 		}
 		/** Render the original four child slots and the package-private workbench in one root. */
-		function LabelStudioRoot({ useStore, actions, useSessions, renderSlot, SessionProvider, useLabelStudioPanel, useLabelStudioContext, baseUrl, bindSession, confirmApplied, selectTarget, selectPage, close, reload, openExternal, t }) {
+		function LabelStudioRoot({ useStore, actions, useSessions, renderSlot, SessionProvider, useLabelStudioPanel, useLabelStudioContext, baseUrl, bindSession, confirmApplied, attachFrame, selectTarget, selectPage, close, reload, openExternal, t }) {
 			const panels = useStore((state) => state);
 			const selectedSession = useSessions((unknownState) => unknownState.current);
 			const liveSession = useSessions((unknownState) => {
@@ -1960,6 +2400,7 @@ window.__ModuleLoader__.load({
 						reload,
 						openExternal,
 						confirmApplied,
+						attachFrame,
 						selectTarget,
 						selectPage,
 						t
@@ -2152,8 +2593,15 @@ window.__ModuleLoader__.load({
 			for (const field of [
 				"contextOpenRetryMs",
 				"contextCloseTimeoutMs",
-				"eventHistorySize"
+				"eventHistorySize",
+				"currentPageTimeoutMs"
 			]) if (!Number.isSafeInteger(config[field]) || config[field] <= 0) throw new Error(`label-studio client: invalid browser boot ${field}`);
+			if (config.frameBaseUrl === "" || config.frameCapability === "" || config.inspectionProtocol !== "dsh-label-studio-page/v1") throw new Error("label-studio client: invalid frame boot config");
+			try {
+				new URL(config.frameBaseUrl);
+			} catch {
+				throw new Error("label-studio client: invalid frame boot baseUrl");
+			}
 			return config;
 		}
 		/**
@@ -2162,9 +2610,9 @@ window.__ModuleLoader__.load({
 		*/
 		function apply(ctx) {
 			const boot = readBootConfig();
-			const baseUrl = boot.baseUrl;
+			const baseUrl = boot.frameBaseUrl;
 			const layout = new LabelStudioLayoutController();
-			const panel = new LabelStudioPanelController(baseUrl);
+			const panel = new LabelStudioPanelController(boot.frameBaseUrl, boot.baseUrl);
 			const setOpen = (open) => {
 				if (panel.store.getSnapshot().open === open) return;
 				panel.setOpen(open);
@@ -2175,6 +2623,7 @@ window.__ModuleLoader__.load({
 				connection: ctx.get("connection"),
 				channel: "/label-studio"
 			});
+			const currentPages = new LabelStudioCurrentPageBridge(bridge, () => panel.currentFrameWindow(), new URL(boot.frameBaseUrl).origin, boot.inspectionProtocol, boot.frameCapability);
 			const sourceId = globalThis.crypto.randomUUID();
 			const contexts = new LabelStudioContextController(bridge, {
 				setOpen,
@@ -2184,11 +2633,13 @@ window.__ModuleLoader__.load({
 				},
 				reloadPage: () => {
 					panel.reloadPage();
-				}
+				},
+				inspectCurrentPage: (event, lease, signal) => currentPages.inspect(event, lease, signal)
 			}, sourceId, {
 				contextOpenRetryMs: boot.contextOpenRetryMs,
 				contextCloseTimeoutMs: boot.contextCloseTimeoutMs,
-				eventHistorySize: boot.eventHistorySize
+				eventHistorySize: boot.eventHistorySize,
+				...boot.webhookStatus === void 0 ? {} : { webhookStatus: boot.webhookStatus }
 			});
 			ctx.effect(() => ctx.locale.register(NS, {
 				zh,
@@ -2231,6 +2682,10 @@ window.__ModuleLoader__.load({
 							},
 							confirmApplied: (revision) => {
 								panel.confirmApplied(revision);
+							},
+							attachFrame: (frame) => {
+								currentPages.cancel();
+								panel.attachFrame(frame);
 							},
 							selectTarget: (input) => contexts.selectPage(parseLabelStudioTargetInput(input)),
 							selectPage: (page) => contexts.selectPage(page),
@@ -2277,12 +2732,14 @@ window.__ModuleLoader__.load({
 			}, "label-studio: theme presenter");
 			ctx.effect(() => async () => {
 				await contexts.dispose();
+				currentPages.dispose();
 				panel.dispose();
 			}, "label-studio: browser context lifecycle");
 		}
 		//#endregion
 		exports.LabelStudioContextBridge = LabelStudioContextBridge;
 		exports.LabelStudioContextController = LabelStudioContextController;
+		exports.LabelStudioCurrentPageBridge = LabelStudioCurrentPageBridge;
 		exports.LabelStudioLayoutController = LabelStudioLayoutController;
 		exports.apply = apply;
 		exports.buildLabelStudioPageUrl = buildLabelStudioPageUrl;

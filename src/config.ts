@@ -7,6 +7,8 @@ import { DEFAULT_LABEL_STUDIO_BASE_URL } from './shared.ts'
 export { DEFAULT_LABEL_STUDIO_BASE_URL } from './shared.ts'
 /** Supported ownership policy for an unavailable Label Studio endpoint. */
 export type LabelStudioLaunchMode = 'python' | 'external'
+/** Webhook availability policy for this plugin instance. */
+export type LabelStudioWebhookMode = 'required' | 'optional' | 'off'
 /** Default launcher used by the installable Bundle and repository example. */
 export const DEFAULT_LABEL_STUDIO_LAUNCH_MODE: LabelStudioLaunchMode = 'python'
 /** Default global Python command resolved by the subprocess provider. */
@@ -35,10 +37,22 @@ export const DEFAULT_CONTEXT_OPEN_RETRY_MS = 1_000
 export const DEFAULT_CONTEXT_CLOSE_TIMEOUT_MS = 1_000
 /** Default number of recently visited projects retained for each Session. */
 export const DEFAULT_RECENT_PROJECT_LIMIT = 10
+/** Default deadline for one on-demand current iframe inspection. */
+export const DEFAULT_CURRENT_PAGE_TIMEOUT_MS = 5_000
+/** Default maximum decoded Label Studio HTML bytes buffered for bridge injection. */
+export const DEFAULT_FRAME_PROXY_HTML_MAX_BYTES = 2_097_152
+/** Default Webhook policy keeps tools available when registration is unavailable. */
+export const DEFAULT_WEBHOOK_MODE: LabelStudioWebhookMode = 'optional'
+/** Default exact DSH WebServer route receiving Label Studio events. */
+export const DEFAULT_WEBHOOK_PATH = '/api/label-studio/webhook'
+/** Default maximum decoded Webhook request bytes. */
+export const DEFAULT_WEBHOOK_MAX_BODY_BYTES = 1_048_576
+/** Default Label Studio delivery deadline for a managed Python process. */
+export const DEFAULT_MANAGED_WEBHOOK_TIMEOUT_SECONDS = 5
 
 /** User-configurable Label Studio plugin fields. */
 export interface Config {
-  /** Loopback HTTP(S) endpoint rendered in the browser and used by REST tools. */
+  /** Loopback HTTP origin used by REST tools and the isolated iframe proxy. */
   baseUrl?: string
   /** Launcher used when the endpoint is unavailable; external mode never spawns. */
   launchMode?: LabelStudioLaunchMode
@@ -68,6 +82,18 @@ export interface Config {
   contextCloseTimeoutMs?: number
   /** Maximum recently visited Label Studio projects retained for each Session. */
   recentProjectLimit?: number
+  /** Positive safe-integer deadline for one on-demand iframe inspection. */
+  currentPageTimeoutMs?: number
+  /** Positive safe-integer decoded HTML limit for iframe bridge injection. */
+  frameProxyHtmlMaxBytes?: number
+  /** Whether Webhook registration is required, optional, or disabled. */
+  webhookMode?: LabelStudioWebhookMode
+  /** Exact absolute DSH WebServer path receiving Webhooks. */
+  webhookPath?: string
+  /** Positive safe-integer request body byte limit. */
+  webhookMaxBodyBytes?: number
+  /** Positive safe-integer Label Studio request timeout in seconds. */
+  managedWebhookTimeoutSeconds?: number
 }
 
 const SUPPORTED_CONFIG_FIELDS = {
@@ -86,6 +112,12 @@ const SUPPORTED_CONFIG_FIELDS = {
   contextOpenRetryMs: true,
   contextCloseTimeoutMs: true,
   recentProjectLimit: true,
+  currentPageTimeoutMs: true,
+  frameProxyHtmlMaxBytes: true,
+  webhookMode: true,
+  webhookPath: true,
+  webhookMaxBodyBytes: true,
+  managedWebhookTimeoutSeconds: true,
 } as const satisfies Record<keyof Config, true>
 
 /** Schemastery projection used by Cordis loaders and configuration UIs. */
@@ -106,6 +138,12 @@ export const Config: z<Config> = z.object({
   contextOpenRetryMs: z.number().min(1).default(DEFAULT_CONTEXT_OPEN_RETRY_MS),
   contextCloseTimeoutMs: z.number().min(1).default(DEFAULT_CONTEXT_CLOSE_TIMEOUT_MS),
   recentProjectLimit: z.number().min(1).max(100).default(DEFAULT_RECENT_PROJECT_LIMIT),
+  currentPageTimeoutMs: z.number().min(1).default(DEFAULT_CURRENT_PAGE_TIMEOUT_MS),
+  frameProxyHtmlMaxBytes: z.number().min(1).default(DEFAULT_FRAME_PROXY_HTML_MAX_BYTES),
+  webhookMode: z.union(['required', 'optional', 'off'] as const).default(DEFAULT_WEBHOOK_MODE),
+  webhookPath: z.string().default(DEFAULT_WEBHOOK_PATH),
+  webhookMaxBodyBytes: z.number().min(1).default(DEFAULT_WEBHOOK_MAX_BODY_BYTES),
+  managedWebhookTimeoutSeconds: z.number().min(1).default(DEFAULT_MANAGED_WEBHOOK_TIMEOUT_SECONDS),
 })
 
 /** Fully validated facts captured by one plugin instance. */
@@ -125,6 +163,12 @@ export interface ResolvedConfig {
   contextOpenRetryMs: number
   contextCloseTimeoutMs: number
   recentProjectLimit: number
+  currentPageTimeoutMs: number
+  frameProxyHtmlMaxBytes: number
+  webhookMode: LabelStudioWebhookMode
+  webhookPath: string
+  webhookMaxBodyBytes: number
+  managedWebhookTimeoutSeconds: number
 }
 
 /**
@@ -148,14 +192,17 @@ export function resolveConfig(config: Config): ResolvedConfig {
   try {
     url = new URL(config.baseUrl ?? DEFAULT_LABEL_STUDIO_BASE_URL)
   } catch {
-    throw new Error('label-studio: baseUrl must be a loopback HTTP(S) URL')
+    throw new Error('label-studio: baseUrl must be a loopback HTTP origin')
   }
   const loopback = url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]'
-  if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !loopback) {
-    throw new Error('label-studio: baseUrl must be a loopback HTTP(S) URL')
+  if (url.protocol !== 'http:' || !loopback) {
+    throw new Error('label-studio: baseUrl must be a loopback HTTP origin')
   }
   if (url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '') {
     throw new Error('label-studio: baseUrl must not contain credentials, a query, or a fragment')
+  }
+  if (url.pathname !== '/') {
+    throw new Error('label-studio: baseUrl must be an origin without a path')
   }
   const pythonExecutable = nonEmpty(
     config.pythonExecutable ?? DEFAULT_PYTHON_EXECUTABLE,
@@ -200,6 +247,24 @@ export function resolveConfig(config: Config): ResolvedConfig {
     config.recentProjectLimit ?? DEFAULT_RECENT_PROJECT_LIMIT,
     'recentProjectLimit',
   )
+  const currentPageTimeoutMs = positiveSafeInteger(
+    config.currentPageTimeoutMs ?? DEFAULT_CURRENT_PAGE_TIMEOUT_MS,
+    'currentPageTimeoutMs',
+  )
+  const frameProxyHtmlMaxBytes = positiveSafeInteger(
+    config.frameProxyHtmlMaxBytes ?? DEFAULT_FRAME_PROXY_HTML_MAX_BYTES,
+    'frameProxyHtmlMaxBytes',
+  )
+  const webhookMode = config.webhookMode ?? DEFAULT_WEBHOOK_MODE
+  const webhookPath = resolveWebhookPath(config.webhookPath ?? DEFAULT_WEBHOOK_PATH)
+  const webhookMaxBodyBytes = positiveSafeInteger(
+    config.webhookMaxBodyBytes ?? DEFAULT_WEBHOOK_MAX_BODY_BYTES,
+    'webhookMaxBodyBytes',
+  )
+  const managedWebhookTimeoutSeconds = positiveSafeInteger(
+    config.managedWebhookTimeoutSeconds ?? DEFAULT_MANAGED_WEBHOOK_TIMEOUT_SECONDS,
+    'managedWebhookTimeoutSeconds',
+  )
   if (recentProjectLimit > 100) {
     throw new Error('label-studio: recentProjectLimit must be at most 100')
   }
@@ -224,7 +289,20 @@ export function resolveConfig(config: Config): ResolvedConfig {
     eventWaitTimeoutMs,
     eventHistorySize,
     recentProjectLimit,
+    currentPageTimeoutMs,
+    frameProxyHtmlMaxBytes,
+    webhookMode,
+    webhookPath,
+    webhookMaxBodyBytes,
+    managedWebhookTimeoutSeconds,
   }
+}
+
+function resolveWebhookPath(value: string): string {
+  if (!value.startsWith('/') || value === '/' || value.endsWith('/') || value.includes('?') || value.includes('#')) {
+    throw new Error('label-studio: webhookPath must be an absolute non-root path without a trailing slash, query, or fragment')
+  }
+  return value
 }
 
 function nonEmpty(value: string, field: string): string {

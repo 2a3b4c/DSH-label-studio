@@ -56,18 +56,21 @@ describe('LabelStudioOperationGate', () => {
     const shutdown = disposeLabelStudioResources({
       operations,
       disposeTools: () => { order.push('tools') },
+      disposeWebhookIngress: () => { order.push('ingress') },
       disposeBrowser: async () => { order.push('channel') },
+      disposeWebhookRegistration: async () => { order.push('webhook') },
       disposeBroker: async () => { order.push('broker') },
       disposeRegistry: () => { order.push('registry') },
       disposeRuntime: async () => { order.push('runtime') },
       disposeStore: async () => { order.push('store') },
     })
-    await Promise.resolve()
-    expect(order).toEqual(['tools', 'channel'])
+    await vi.waitFor(() => {
+      expect(order).toEqual(['tools', 'ingress', 'channel', 'webhook'])
+    })
     operation.resolve(undefined)
     await pending
     await shutdown
-    expect(order).toEqual(['tools', 'channel', 'broker', 'registry', 'runtime', 'store'])
+    expect(order).toEqual(['tools', 'ingress', 'channel', 'webhook', 'broker', 'registry', 'runtime', 'store'])
   })
 
   it('closes the durable store even when runtime teardown fails', async () => {
@@ -81,5 +84,23 @@ describe('LabelStudioOperationGate', () => {
       disposeStore: async () => { order.push('store') },
     })).rejects.toThrow('runtime teardown failed')
     expect(order).toEqual(['tools', 'broker', 'registry', 'runtime', 'store'])
+  })
+
+  it('continues every teardown stage after an earlier disposer fails', async () => {
+    const order: string[] = []
+    await expect(disposeLabelStudioResources({
+      operations: new LabelStudioOperationGate(),
+      disposeTools: () => { order.push('tools'); throw new Error('tools failed') },
+      disposeWebhookIngress: () => { order.push('ingress') },
+      disposeBrowser: async () => { order.push('browser'); throw new Error('browser failed') },
+      disposeWebhookRegistration: async () => { order.push('webhook') },
+      disposeCurrentPages: () => { order.push('pages') },
+      disposeFrameProxy: async () => { order.push('proxy') },
+      disposeBroker: async () => { order.push('broker') },
+      disposeRegistry: () => { order.push('registry') },
+      disposeRuntime: async () => { order.push('runtime') },
+      disposeStore: async () => { order.push('store') },
+    })).rejects.toBeInstanceOf(AggregateError)
+    expect(order).toEqual(['tools', 'ingress', 'browser', 'webhook', 'pages', 'proxy', 'broker', 'registry', 'runtime', 'store'])
   })
 })

@@ -151,7 +151,13 @@ npx @deepseek-ai/dsh@0.1.2-alpha.3 web --dump-config
 npx @deepseek-ai/dsh@0.1.2-alpha.3 web
 ```
 
-卸载成功后，Profile 不再包含 `dsh-label-studio-workbench`，原 `ui-layout` 恢复启用，Label Studio 入口和工具消失。关闭右侧面板只会隐藏标注界面，不等于卸载插件。
+卸载成功后，Profile 不再包含 `dsh-label-studio-workbench`，原 `ui-layout` 恢复启用，Label Studio 入口、RPC、工具、Webhook route、iframe 代理和浏览器租约都会消失。插件在 `label_studio_context` storage domain 中保存的各 Session binding 不会因卸载而删除；如果 8080 服务原本由 Docker、系统服务或手工命令提供，卸载不会停止外部 Label Studio。关闭右侧面板只会隐藏标注界面，不等于卸载插件。
+
+## 6. 重新安装并恢复 Session
+
+停止 DSH 后，重新执行第 2 节的本地目录安装命令，再按第 3 节启动。插件会恢复创建时间仍匹配的各 Session binding，并使用原 owner ID 对账项目级 Webhook；同一项目只保留一个插件自有注册，RPC route 和 iframe 代理也只创建一份。
+
+重新安装后分别切换两个曾绑定不同项目的 Session，确认上下文栏和 Label Studio 页面各自恢复。仅在 iframe 中被动浏览其他项目不会替换 binding；后续明确要求模型“操作当前项目”时，工具才会发起一次按需检查，并在 REST 操作成功后更新 binding。
 
 ## 常见错误
 

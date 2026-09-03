@@ -44,6 +44,9 @@ export class LabelStudioRuntime {
         stderr: { maxBytes: 65_536 },
       },
       graceMs: this.config.shutdownGraceMs,
+      env: {
+        WEBHOOK_TIMEOUT: String(this.config.managedWebhookTimeoutSeconds),
+      },
     })
 
     try {
@@ -96,7 +99,7 @@ export class LabelStudioRuntime {
   }
 
   private async resolveLaunchArgv(port: string): Promise<string[]> {
-    const tail = ['start', '--no-browser', '--port', port, '--host', this.config.baseUrl]
+    const tail = ['start', '--no-browser', '--port', port, '--internal-host', '127.0.0.1']
     switch (this.config.launchMode) {
       case 'python': {
         const executable = await this.subprocess.resolveExecutable(this.config.pythonExecutable)

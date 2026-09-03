@@ -6,6 +6,7 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   LabelStudioActiveTarget,
   LabelStudioEventBatch,
+  LabelStudioInspectPageCommit,
   LabelStudioPageCommit,
   LabelStudioPageContext,
   LabelStudioRpcError,
@@ -13,6 +14,7 @@ import type {
   LabelStudioRpcResultMap,
 } from '@deepseek-ai/dsh-label-studio-protocol'
 import type { LabelStudioChangeBroker } from './change-broker.ts'
+import { LabelStudioCurrentPageError, type LabelStudioCurrentPageBroker } from './current-page-broker.ts'
 import { LabelStudioContextError, type LabelStudioContextRegistry } from './context-registry.ts'
 import {
   labelStudioAnnotationId,
@@ -20,6 +22,7 @@ import {
   labelStudioContextSourceId,
   labelStudioFocusCorrelationId,
   labelStudioNavigationSequence,
+  labelStudioPageInspectionId,
   labelStudioProjectId,
   labelStudioTaskId,
 } from './context-types.ts'
@@ -46,6 +49,7 @@ const ENDPOINTS = new Set<Endpoint>([
   'events/wait',
   'focus/ack',
   'page/commit',
+  'inspection/commit',
 ])
 
 const ERROR_MESSAGES: Record<LabelStudioRpcError['code'], string> = {
@@ -60,6 +64,14 @@ const ERROR_MESSAGES: Record<LabelStudioRpcError['code'], string> = {
   'focus-not-found': 'focus request is absent or does not match',
   'session-context-conflict': 'Session page revision is stale',
   'session-context-unavailable': 'Session page storage is unavailable',
+  'binding-missing': 'Label Studio binding is missing',
+  'binding-conflict': 'Label Studio binding revision is stale',
+  'binding-target-mismatch': 'Label Studio binding target does not match',
+  'current-page-unavailable': 'current Label Studio page is unavailable',
+  'current-page-timeout': 'current Label Studio page inspection timed out',
+  'current-page-unsupported': 'current Label Studio route is unsupported',
+  'webhook-unavailable': 'Label Studio Webhook is unavailable',
+  'webhook-unassigned': 'Label Studio Webhook has no matching binding',
 }
 
 /**
@@ -70,6 +82,7 @@ const ERROR_MESSAGES: Record<LabelStudioRpcError['code'], string> = {
  * @param sessionContexts - durable page state for exact Session lifecycles.
  * @param operations - shared package operation gate.
  * @param options - bounded long-poll settings.
+ * @param currentPages - optional one-shot page broker during staged assembly.
  * @returns asynchronous disposer that closes the route before removing it.
  */
 export function registerLabelStudioContextRpc(
@@ -79,6 +92,7 @@ export function registerLabelStudioContextRpc(
   sessionContexts: LabelStudioSessionContextStore,
   operations: LabelStudioOperationGate,
   options: LabelStudioContextRpcOptions,
+  currentPages?: LabelStudioCurrentPageBroker,
 ): () => Promise<void> {
   let closing = false
   const handler: ConnectionRpcHandler = async (rawEndpoint, payload, signal) => {
@@ -94,11 +108,13 @@ export function registerLabelStudioContextRpc(
         broker,
         sessionContexts,
         options,
+        currentPages,
       ))
       return outer(success(value))
     } catch (error) {
       if (error instanceof LabelStudioContextError) return outer(failure(error.code, error.retryAfterMs))
       if (error instanceof LabelStudioSessionContextError) return outer(failure(error.code))
+      if (error instanceof LabelStudioCurrentPageError) return outer(failure(error.code))
       if (error instanceof LabelStudioOperationClosedError) return outer(failure('invalid-request'))
       if (error instanceof TypeError) return outer(failure('invalid-request'))
       if (signal.aborted) {
@@ -123,12 +139,13 @@ async function dispatch(
   broker: LabelStudioChangeBroker,
   sessionContexts: LabelStudioSessionContextStore,
   options: LabelStudioContextRpcOptions,
+  currentPages: LabelStudioCurrentPageBroker | undefined,
 ): Promise<LabelStudioRpcResultMap[Endpoint]> {
   switch (endpoint) {
     case 'lease/open': {
       const request = parseOpen(payload)
       const sessionId = SessionId(request.sessionId)
-      const identity = await requirePersistentSession(
+      const identity = await resolvePersistentSessionIdentity(
         ctx, sessionId, signal, registry, broker, sessionContexts,
       )
       const baseline = broker.latestRevision(sessionId)
@@ -161,7 +178,7 @@ async function dispatch(
     case 'events/wait': {
       const request = parseWait(payload)
       const inspected = registry.inspectLease(request.leaseId, request.generation)
-      await requirePersistentSession(
+      await resolvePersistentSessionIdentity(
         ctx, inspected.sessionId, signal, registry, broker, sessionContexts,
       )
       registry.renew(request.leaseId, request.generation)
@@ -180,7 +197,7 @@ async function dispatch(
     case 'focus/ack': {
       const request = parseAck(payload)
       const binding = registry.inspectLease(request.leaseId, request.generation)
-      await requirePersistentSession(
+      await resolvePersistentSessionIdentity(
         ctx, binding.sessionId, signal, registry, broker, sessionContexts,
       )
       return durableOperation(() => broker.acknowledgeFocus(
@@ -190,7 +207,7 @@ async function dispatch(
     case 'page/commit': {
       const request = parsePageCommit(payload)
       const binding = registry.inspectLease(request.leaseId, request.generation)
-      const identity = await requirePersistentSession(
+      const identity = await resolvePersistentSessionIdentity(
         ctx, binding.sessionId, signal, registry, broker, sessionContexts,
       )
       if (request.page.view === 'task') {
@@ -215,10 +232,29 @@ async function dispatch(
       }
       return durableOperation(() => sessionContexts.commit(identity, request))
     }
+    case 'inspection/commit': {
+      if (currentPages === undefined) throw new TypeError('current-page broker is unavailable')
+      const request = parseInspectionCommit(payload)
+      const binding = registry.inspectLease(request.leaseId, request.generation)
+      const identity = await resolvePersistentSessionIdentity(
+        ctx, binding.sessionId, signal, registry, broker, sessionContexts,
+      )
+      return currentPages.commit(request, identity)
+    }
   }
 }
 
-async function requirePersistentSession(
+/**
+ * Resolve one current or persisted Session to its exact lifecycle identity.
+ * @param ctx - Session services used for live and persisted lookup.
+ * @param sessionId - verified opaque Session id.
+ * @param signal - cancellation for persistence lookup.
+ * @param registry - lease registry cleared when the Session no longer exists.
+ * @param broker - event state cleared when the Session no longer exists.
+ * @param sessionContexts - durable plugin state cleared for a missing Session.
+ * @returns the exact Session id and creation time.
+ */
+export async function resolvePersistentSessionIdentity(
   ctx: Context,
   sessionId: SessionId,
   signal: AbortSignal,
@@ -358,6 +394,25 @@ function parsePageCommit(payload: unknown): LabelStudioPageCommit {
     navigationSequence: labelStudioNavigationSequence(nonNegative(value.navigationSequence)),
     expectedSessionContextRevision: nonNegative(value.expectedSessionContextRevision),
     page: parsePage(value.page),
+  }
+}
+
+function parseInspectionCommit(payload: unknown): LabelStudioInspectPageCommit {
+  const value = record(payload, ['leaseId', 'generation', 'inspectionId', 'outcome'])
+  const outcome = record(value.outcome, ['kind', 'page'])
+  if (outcome.kind === 'unavailable' || outcome.kind === 'unsupported') {
+    if (outcome.page !== undefined) throw new TypeError('negative inspection must not include a page')
+    return {
+      ...parseLease({ leaseId: value.leaseId, generation: value.generation }),
+      inspectionId: labelStudioPageInspectionId(stringField(value.inspectionId)),
+      outcome: { kind: outcome.kind },
+    }
+  }
+  if (outcome.kind !== 'page' || outcome.page === undefined) throw new TypeError('invalid inspection outcome')
+  return {
+    ...parseLease({ leaseId: value.leaseId, generation: value.generation }),
+    inspectionId: labelStudioPageInspectionId(stringField(value.inspectionId)),
+    outcome: { kind: 'page', page: parsePage(outcome.page) },
   }
 }
 

@@ -18,11 +18,18 @@ export class LabelStudioPanelController {
     open: false, mounted: false, reloadRevision: 0, navigationRevision: 0,
   })
   private readonly pending = new Map<number, { resolve: () => void; reject: (error: Error) => void }>()
-  /** @param baseUrl - Host-validated neutral Label Studio page. */
-  constructor(private readonly baseUrl: string) {}
+  private frameWindow: WindowProxy | undefined
   /**
-   * Set workbench visibility while permanently latching the first mount.
-   * @param open - requested visibility; the first open permanently latches mounted.
+   * @param frameBaseUrl - isolated proxy endpoint used by the iframe.
+   * @param externalBaseUrl - direct Label Studio endpoint used outside DSH.
+   */
+  constructor(
+    private readonly frameBaseUrl: string,
+    private readonly externalBaseUrl: string = frameBaseUrl,
+  ) {}
+  /**
+   * Set workbench visibility while retaining any mounted iframe.
+   * @param open - requested visibility; opening permanently latches mounted.
    */
   setOpen(open: boolean): void {
     const current = this.store.getSnapshot()
@@ -39,7 +46,7 @@ export class LabelStudioPanelController {
   }
 
   /**
-   * Stage a controlled page URL and wait until React commits the matching iframe src.
+   * Mount if needed, stage a controlled page URL, and wait for the matching iframe src.
    * @param page - structured Label Studio page.
    * @returns promise resolved by {@link confirmApplied}.
    */
@@ -49,8 +56,9 @@ export class LabelStudioPanelController {
     const navigationRevision = current.navigationRevision + 1
     this.store.set({
       ...current,
+      mounted: true,
       navigationRevision,
-      targetUrl: buildLabelStudioPageUrl(this.baseUrl, page),
+      targetUrl: buildLabelStudioPageUrl(this.frameBaseUrl, page),
     })
     return new Promise<void>((resolve, reject) => {
       this.pending.set(navigationRevision, { resolve, reject })
@@ -85,13 +93,31 @@ export class LabelStudioPanelController {
     if (this.store.getSnapshot().targetUrl !== undefined) this.reload()
   }
 
+  /** Record the currently mounted iframe window for one-shot inspection. */
+  attachFrame(frame: HTMLIFrameElement | null): void {
+    this.frameWindow = frame?.contentWindow ?? undefined
+  }
+
+  /** Return the currently mounted iframe window without querying the DOM. */
+  currentFrameWindow(): WindowProxy | undefined { return this.frameWindow }
+
   /** Open the controlled target, or the neutral endpoint, outside the dock. */
   openExternal(): void {
-    window.open(this.store.getSnapshot().targetUrl ?? this.baseUrl, '_blank', 'noopener,noreferrer')
+    const targetUrl = this.store.getSnapshot().targetUrl
+    const url = targetUrl === undefined
+      ? this.externalBaseUrl
+      : (() => {
+          const target = new URL(targetUrl)
+          return new URL(`${target.pathname}${target.search}${target.hash}`, `${this.externalBaseUrl}/`).href
+        })()
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   /** Reject outstanding DOM confirmations during plugin teardown. */
-  dispose(): void { this.rejectPending('label-studio panel: disposed') }
+  dispose(): void {
+    this.frameWindow = undefined
+    this.rejectPending('label-studio panel: disposed')
+  }
 
   private rejectPending(message: string): void {
     for (const pending of this.pending.values()) pending.reject(new Error(message))

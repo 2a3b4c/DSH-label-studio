@@ -3,6 +3,7 @@ import {
   labelStudioPageContextSchema,
   labelStudioSessionContextDomainSpec,
   labelStudioSessionContextRecordSchema,
+  labelStudioWebhookOwnerRecordSchema,
 } from '../src/session-context-spec.ts'
 
 const leaseId = '123e4567-e89b-42d3-a456-426614174000'
@@ -33,7 +34,24 @@ describe('Label Studio Session context storage specification', () => {
   it('declares one versioned sessions table', () => {
     expect(labelStudioSessionContextDomainSpec.name).toBe('label_studio_context')
     expect(labelStudioSessionContextDomainSpec.version).toBe(1)
-    expect(Object.keys(labelStudioSessionContextDomainSpec.tables)).toEqual(['sessions'])
+    expect(Object.keys(labelStudioSessionContextDomainSpec.tables)).toEqual(['sessions', 'webhook_owners'])
+  })
+
+  it('projects an old record without a binding as an empty binding', () => {
+    const parsed = labelStudioSessionContextRecordSchema.parse({
+      sessionCreatedAt: 1,
+      page: { view: 'projects' },
+      recentProjects: [],
+      revision: 0,
+    })
+    expect(parsed.binding).toEqual({ recentProjects: [], revision: 0 })
+  })
+
+  it('requires a UUID for the durable Webhook owner id', () => {
+    expect(labelStudioWebhookOwnerRecordSchema.safeParse({ ownerId: 'not-a-uuid' }).success).toBe(false)
+    expect(labelStudioWebhookOwnerRecordSchema.safeParse({
+      ownerId: '123e4567-e89b-42d3-a456-426614174000',
+    }).success).toBe(true)
   })
 
   it('accepts a complete record including history and the last commit receipt', () => {
@@ -47,6 +65,18 @@ describe('Label Studio Session context storage specification', () => {
         availability: 'available',
       }],
       revision: 4,
+      binding: {
+        target: { kind: 'task', projectId: 7, taskId: 11, annotationId: 13 },
+        source: 'tool-result',
+        boundAt: 1_788_000_000_200,
+        recentProjects: [{
+          projectId: 7,
+          lastTaskId: 11,
+          lastVisitedAt: 1_788_000_000_200,
+          availability: 'available',
+        }],
+        revision: 2,
+      },
       lastCommit: {
         leaseId,
         generation: 2,
@@ -57,6 +87,24 @@ describe('Label Studio Session context storage specification', () => {
       },
     }
     expect(labelStudioSessionContextRecordSchema.parse(record)).toEqual(record)
+  })
+
+  it.each([
+    { target: { kind: 'project', projectId: 7 }, recentProjects: [], revision: 1 },
+    { source: 'tool-result', boundAt: 1, recentProjects: [], revision: 1 },
+    { target: { kind: 'project', projectId: 7 }, source: 'tool-result', recentProjects: [], revision: 1 },
+    { target: { kind: 'project', projectId: 0 }, source: 'tool-result', boundAt: 1, recentProjects: [], revision: 1 },
+    { target: { kind: 'task', projectId: 7, taskId: -1 }, source: 'tool-result', boundAt: 1, recentProjects: [], revision: 1 },
+    { target: { kind: 'project', projectId: 7 }, source: 'browser', boundAt: 1, recentProjects: [], revision: 1 },
+    { target: { kind: 'project', projectId: 7 }, source: 'tool-result', boundAt: -1, recentProjects: [], revision: 1 },
+  ])('rejects an invalid binding %#', (binding) => {
+    expect(labelStudioSessionContextRecordSchema.safeParse({
+      sessionCreatedAt: 1,
+      page: { view: 'projects' },
+      recentProjects: [],
+      revision: 0,
+      binding,
+    }).success).toBe(false)
   })
 
   it.each([

@@ -97,6 +97,69 @@ const BUSINESS_CASES = [
 ] as const
 
 describe('LabelStudioApi', () => {
+  it('lists supported actions and owner-reduced Webhook registrations', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({ access: ACCESS_SENTINEL }))
+      .mockResolvedValueOnce(response({ PROJECT_CREATED: {}, TASKS_CREATED: {}, UNKNOWN: {} }))
+      .mockResolvedValueOnce(response({ access: ACCESS_SENTINEL }))
+      .mockResolvedValueOnce(response([
+        {
+          id: 5, project: 7, url: 'http://127.0.0.1:3000/hook', headers: { 'X-DSH-Label-Studio-Owner': 'owner-a', Secret: 'not returned' },
+        },
+        { id: 6, project: 8, url: 'http://user/hook', headers: {} },
+      ]))
+    const api = makeApi(fetch as Fetch, credentials().provider)
+
+    await expect(api.listWebhookActions()).resolves.toEqual(new Set(['PROJECT_CREATED', 'TASKS_CREATED']))
+    await expect(api.listWebhooks()).resolves.toEqual([
+      { id: 5, projectId: 7, url: 'http://127.0.0.1:3000/hook', ownerId: 'owner-a' },
+      { id: 6, projectId: 8, url: 'http://user/hook' },
+    ])
+  })
+
+  it('lists every project id from the paginated Label Studio response', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({ access: ACCESS_SENTINEL }))
+      .mockResolvedValueOnce(response({ count: 3, next: 'http://127.0.0.1:8080/api/projects/?page=2&page_size=2', results: [{ id: 7 }, { id: 8 }] }))
+      .mockResolvedValueOnce(response({ access: ACCESS_SENTINEL }))
+      .mockResolvedValueOnce(response({ count: 3, next: null, results: [{ id: 9 }] }))
+    const api = makeApi(fetch as Fetch, credentials().provider)
+
+    await expect(api.listProjectIds()).resolves.toEqual([7, 8, 9])
+    expect(fetch.mock.calls[1]?.[0]).toBe('http://127.0.0.1:8080/api/projects/?page_size=100')
+    expect(fetch.mock.calls[3]?.[0]).toBe('http://127.0.0.1:8080/api/projects/?page=2&page_size=2')
+  })
+
+  it('creates and deletes exact Webhook registrations through authenticated REST calls', async () => {
+    const input = {
+      url: 'http://127.0.0.1:3000/hook',
+      actions: ['ANNOTATION_CREATED'] as const,
+      headers: { 'X-DSH-Label-Studio-Owner': 'owner-a', 'X-DSH-Label-Studio-Webhook': 'secret' },
+      is_active: true as const,
+      project: 7,
+      send_for_all_actions: false as const,
+      send_payload: true as const,
+    }
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({ access: ACCESS_SENTINEL }))
+      .mockResolvedValueOnce(response({ id: 5, project: 7, url: input.url, headers: input.headers }))
+      .mockResolvedValueOnce(response({ access: ACCESS_SENTINEL }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const api = makeApi(fetch as Fetch, credentials().provider)
+
+    await expect(api.createWebhook(input)).resolves.toEqual({ id: 5, projectId: 7, url: input.url, ownerId: 'owner-a' })
+    await expect(api.deleteWebhook(5)).resolves.toBeUndefined()
+    expect(fetch.mock.calls[1]?.[1]).toMatchObject({ method: 'POST', body: JSON.stringify(input) })
+    expect(fetch.mock.calls[3]?.[1]).toMatchObject({ method: 'DELETE' })
+  })
+
+  it('classifies an unknown Webhook delete outcome for reconciliation', async () => {
+    const api = makeApi(vi.fn()
+      .mockResolvedValueOnce(response({ access: ACCESS_SENTINEL }))
+      .mockRejectedValueOnce(new TypeError('connection reset')) as Fetch, credentials().provider)
+    await expect(api.deleteWebhook(5)).rejects.toBeInstanceOf(LabelStudioMutationOutcomeUnknownError)
+  })
+
   it('reads and validates complete project and task views with GET requests', async () => {
     const auth = credentials()
     const fetch = vi.fn()
@@ -159,6 +222,55 @@ describe('LabelStudioApi', () => {
     expect(error).not.toContain(BODY_SENTINEL)
     expect(error).not.toContain(PAT_SENTINEL)
     expect(error).not.toContain(ACCESS_SENTINEL)
+  })
+
+  it('rejects project and task responses whose ids do not match the requested resource', async () => {
+    const api = makeApi(vi.fn()
+      .mockResolvedValueOnce(response({ access: ACCESS_SENTINEL }))
+      .mockResolvedValueOnce(response({
+        id: 8, label_config: '<View />', show_collab_predictions: false,
+      }))
+      .mockResolvedValueOnce(response({ access: ACCESS_SENTINEL }))
+      .mockResolvedValueOnce(response({
+        id: 12, project: 7, data: {}, annotations: [], predictions: [],
+      })) as Fetch, credentials().provider)
+
+    await expect(api.getProject(labelStudioProjectId(7))).rejects.toThrow('requested project 7')
+    await expect(api.getTask(labelStudioTaskId(11))).rejects.toThrow('requested task 11')
+  })
+
+  it('updates only label_config and verifies the returned project fields', async () => {
+    const labelConfig = '<View><Text name="text" value="$text" /></View>'
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({ access: ACCESS_SENTINEL }))
+      .mockResolvedValueOnce(response({ id: 7, label_config: labelConfig }))
+    const api = makeApi(fetch as Fetch, credentials().provider)
+
+    await expect(api.updateProjectLabelConfig(labelStudioProjectId(7), labelConfig))
+      .resolves.toEqual({ id: 7, labelConfig })
+    expect(fetch.mock.calls[1]?.[1]).toEqual(expect.objectContaining({
+      method: 'PATCH', body: JSON.stringify({ label_config: labelConfig }),
+    }))
+  })
+
+  it.each([
+    { id: 8, label_config: '<View />' },
+    { id: 7, label_config: '<View />' },
+  ])('treats an unverifiable label-config update as an unknown mutation outcome', async (body) => {
+    const expected = '<View><Text name="text" value="$text" /></View>'
+    const api = makeApi(vi.fn()
+      .mockResolvedValueOnce(response({ access: ACCESS_SENTINEL }))
+      .mockResolvedValueOnce(response(body)) as Fetch, credentials().provider)
+    await expect(api.updateProjectLabelConfig(labelStudioProjectId(7), expected))
+      .rejects.toBeInstanceOf(LabelStudioMutationOutcomeUnknownError)
+  })
+
+  it('treats a prediction response for another task as an unknown mutation outcome', async () => {
+    const api = makeApi(vi.fn()
+      .mockResolvedValueOnce(response({ access: ACCESS_SENTINEL }))
+      .mockResolvedValueOnce(response({ id: 19, task: 12 })) as Fetch, credentials().provider)
+    await expect(api.createPrediction({ taskId: 11, result: [] }))
+      .rejects.toBeInstanceOf(LabelStudioMutationOutcomeUnknownError)
   })
 
   it.each([

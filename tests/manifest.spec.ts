@@ -60,15 +60,27 @@ describe('Label Studio Host and Bundle manifest', () => {
     const patch = read('cordis.patch.yml')
 
     for (const field of [
-      'baseUrl:',
-      'launchMode:',
-      'pythonExecutable:',
-      'refreshTokenCredential:',
-      'recentProjectLimit: 10',
+      'baseUrl:', 'launchMode:', 'pythonExecutable:', 'refreshTokenCredential:',
+      'recentProjectLimit: 10', 'currentPageTimeoutMs: 5000',
+      'frameProxyHtmlMaxBytes: 2097152', 'webhookMode: optional',
+      'webhookPath: /api/label-studio/webhook', 'webhookMaxBodyBytes: 1048576',
+      'managedWebhookTimeoutSeconds: 5',
     ]) {
       expect(overlay).toContain(field)
       expect(patch).toContain(field)
     }
+  })
+
+  it('composes one Host row and one browser Client without shipping another DSH core', () => {
+    const manifest = JSON.parse(read('package.json')) as LabelStudioHostManifest
+    const patch = read('cordis.patch.yml')
+
+    expect(patch.match(/name: 'dsh-label-studio-workbench'/g)).toHaveLength(1)
+    expect(patch.match(/- id: ui-layout/g)).toHaveLength(1)
+    expect(manifest.dsh?.client).toBeDefined()
+    expect(manifest.dependencies).not.toHaveProperty('@deepseek-ai/dsh-agent-loop')
+    expect(manifest.dependencies).not.toHaveProperty('@deepseek-ai/dsh-session-persistence')
+    expect(manifest.dependencies).not.toHaveProperty('@deepseek-ai/dsh-client-connection')
   })
 
   it('builds an artifact with only Python and external launch modes', () => {

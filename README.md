@@ -47,6 +47,12 @@ The plugin first probes the configured `/health` endpoint. It adopts a healthy s
 | `contextOpenRetryMs` | `1000` | Positive browser delay before retrying an unknown lease open or a recoverable event wait. |
 | `contextCloseTimeoutMs` | `1000` | Positive browser deadline for best-effort lease close; lease TTL remains the final cleanup mechanism. |
 | `recentProjectLimit` | `10` | Positive safe-integer number of recently visited projects retained per DSH Session; accepted range is 1–100. |
+| `currentPageTimeoutMs` | `5000` | Positive safe-integer deadline for one on-demand iframe page inspection. |
+| `frameProxyHtmlMaxBytes` | `2097152` | Decoded HTML byte limit buffered before the iframe proxy injects its Bridge. |
+| `webhookMode` | `optional` | `required` requires registration, `optional` preserves tools and Bridge on failure, and `off` registers neither route nor Webhook. |
+| `webhookPath` | `/api/label-studio/webhook` | Absolute non-root exact path registered on the DSH WebServer. |
+| `webhookMaxBodyBytes` | `1048576` | Maximum bytes accepted from one Webhook request. |
+| `managedWebhookTimeoutSeconds` | `5` | Label Studio Webhook delivery timeout supplied to a managed Python process. |
 
 Only the fields in this table are accepted; unknown fields fail during plugin configuration instead of being ignored. `allowDirectAnnotationUpdate` is explicitly unsupported because prediction creation is the only model write path in controlled-task V1.
 
@@ -57,30 +63,35 @@ Configuration carries only the credential reference. Create a personal access to
 ## Tools
 
 - `label_studio_status` reads the unauthenticated `/health` endpoint and reports the endpoint and whether this plugin owns the process.
-- `label_studio_create_project` creates a project with optional Label Studio XML and description.
-- `label_studio_import_tasks` imports task JSON into a project.
-- `label_studio_create_prediction` attaches a Label Studio prediction result to a task for pre-annotation.
-- `label_studio_create_active_prediction` creates an explicit prediction for the current Session's active task and marks that task for browser refresh after REST success.
-- `label_studio_focus_task` navigates this Session's workbench to a project, task, and optional saved annotation after the browser acknowledges the URL.
-- `label_studio_get_active_task` uses the current Session lease to read the authoritative project label config, task data, complete saved annotations, and predictions. If its project read returns HTTP 404, the plugin marks that project deleted in this Session's history, changes the durable page to the project list, and retires the stale live lease. This check occurs only on a plugin-controlled REST read; arbitrary iframe navigation is not observed.
+- `label_studio_create_project` creates a project and binds its returned id to the calling DSH Session.
+- `label_studio_import_tasks` imports task JSON using an explicit project, the Session binding, or a requested current-page inspection.
+- `label_studio_create_prediction` attaches a prediction using an explicit task, the Session binding, or a requested current-page inspection.
+- `label_studio_create_active_prediction` creates an explicit prediction for the Session-bound task, falling back to one current-page inspection when needed, and marks that task for browser refresh after REST success.
+- `label_studio_focus_task` verifies a project/task association, navigates this Session's workbench, and binds the task after the browser acknowledges the URL.
+- `label_studio_update_label_config` replaces only a selected project's `label_config`.
+- `label_studio_get_active_task` resolves and verifies the Session task, then reads the authoritative project label config, task data, complete saved annotations, and predictions. If its project read returns HTTP 404, the plugin marks that project deleted in this Session's history, changes the durable page to the project list, and retires the stale live lease.
 
-The model receives numeric project, task, and prediction ids as canonical JSON values. Task focus requires a live Session browser lease, clears the previous target before dispatch, and succeeds only after the browser applies the requested URL; it does not claim that the iframe network load finished. Active-task reads re-fetch by the leased ids through the Host REST client and reject project, task, annotation, or prediction association mismatches. Active prediction creation accepts no task id: it validates the leased task/project association, rechecks the lease generation and target revision before dispatch, passes the caller's explicit tag-specific `result` to Label Studio, and publishes `prediction-created` only after a successful response. It never infers a result from saved annotations or claims that raw label-config XML validates every modality. No tool updates a saved annotation; users review, accept, or edit predictions inside Label Studio. The iframe is presentation only: project creation, task reads, and pre-annotation never depend on cross-origin DOM access or browser automation.
+The model receives numeric project, task, and prediction ids as canonical JSON values. Explicit ids take precedence; `current_page: true` requests one iframe inspection, while omitted ids reuse the calling Session binding and inspect once only when that binding lacks the required resource level. Successful business operations then update the binding with compare-and-swap semantics. A concurrent binding change keeps the business result, returns a `binding-conflict` warning, and never replays the Label Studio mutation. Every binding-aware tool requires a DSH Session. No tool updates a saved annotation; users review, accept, or edit predictions inside Label Studio.
 
 ## Browser behavior
 
-The browser package registers an additive action in `conversation.session.header.actions` and supplies the only active `root` occupant while this Bundle is present. That root preserves the original sidebar, conversation, details, and overlay slots and renders the workbench directly; it does not add a public workbench slot. The iframe is absent before first open and remains mounted inside a hidden, inert section after close. The workbench header's fullscreen control overlays Label Studio across the DSH page; selecting it again, pressing `Escape`, or closing the workbench restores the docked layout. Reload replaces only the iframe, **Open in a new window** uses the configured endpoint, and closing the workbench leaves both the conversation and Label Studio server running.
+The browser package registers an additive action in `conversation.session.header.actions` and supplies the only active `root` occupant while this Bundle is present. That root preserves the original sidebar, conversation, details, and overlay slots and renders the workbench directly; it does not add a public workbench slot. The workbench starts closed. Restoring a Session page may mount its iframe inside the hidden, inert section without opening the right-hand column; after an explicit open, closing retains the iframe so reopening does not reload it. The workbench header's fullscreen control overlays Label Studio across the DSH page; selecting it again, pressing `Escape`, or closing the workbench restores the docked layout. Reload replaces only the iframe, **Open in a new window** uses the configured endpoint, and closing the workbench leaves both the conversation and Label Studio server running.
 
 Label Studio 1.22.0 was verified to serve its login page without `X-Frame-Options` or an enforced `frame-ancestors` directive. A different Label Studio deployment that adds either restriction must allow the DSH Web origin or use the new-window control.
 
 ## Context channel
 
-The Host registers `/label-studio` through `ctx.connection.rpc.handle()`; DSH `0.1.2-alpha.3` Connection applies Host, Origin, browser-authentication, and cross-site request checks before plugin code runs. Seven endpoints open and close leases, reserve and publish controlled targets, commit durable pages, wait for revision events, and acknowledge Host focus requests. Connection's outer `RpcResult` carries a nested Label Studio outcome with stable, sanitized errors. The channel never carries sample data, annotation results, credentials, or tokens.
+The Host registers `/label-studio` through `ctx.connection.rpc.handle()`; DSH `0.1.2-alpha.3` Connection applies Host, Origin, browser-authentication, and cross-site request checks before plugin code runs. Eight endpoints open and close leases, reserve and publish controlled targets, commit durable pages and one-shot inspection responses, wait for revision events, and acknowledge Host focus requests. Connection's outer `RpcResult` carries a nested Label Studio outcome with stable, sanitized errors. The channel never carries sample data, annotation results, credentials, or tokens.
 
 `LabelStudioContextRegistry` permits one expiring browser-source lease per DSH Session. Open and every wait validate either a live `ctx.sessions` entry or cold `ctx.sessionPersistence` metadata; a failed or cancelled persistence read does not renew the lease. `LabelStudioChangeBroker` keeps a bounded, Session-isolated revision suffix, reports replay resets, and supports cancellable long polling and idempotent focus acknowledgements. The shared operation gate closes tools and RPC together during asynchronous package disposal before broker, registry, and runtime state is released.
 
 The `label_studio_context` storage domain keeps the current projects, project, or task page plus bounded recent-project metadata outside the DSH Session event log. Session id and creation time prevent a recycled id from reading an older record. Removing the Bundle removes its root, RPC handlers, tools, leases, and plugin runtime state on restart but leaves this domain intact; a Label Studio service not started by the plugin remains running. Reinstalling the Bundle restores each matching Session independently.
 
+Webhook delivery uses an independent random secret on one exact POST route, while a durable owner UUID limits reconciliation and cleanup to registrations created by this plugin. Label Studio 1.22 Community uses project-scoped Webhooks, so startup installs one for each existing project. An annotation create or update without an existing binding performs one inspection of every live DSH iframe and binds only when exactly one Session shows the same project and task. Existing exact bindings remain unchanged; task deletion downgrades an exact task binding to its project, and annotation deletion never infers a task. After optional startup failure, the existing `label_studio_status` tool makes one attempt through the same idempotent registrar on each call.
+
 The browser binds the selected Session after React commits, opens the lease, restores that Session's durable page, and uses a serial queue for manual page selection and Host focus requests. It applies the confirmed Label Studio task URL before publishing or acknowledging the target, keeps observed and committed event cursors separate during uncertain acknowledgements, and cancels generation-scoped requests on Session or Connection replacement. Its page bar shows synchronization state and the bounded recent-project list; deleted projects remain visible but disabled. A `prediction-created` event reloads the iframe once only when its task id matches the active target; a replay reset reloads the current target once. The boot projection supplies `eventHistorySize`, `contextOpenRetryMs`, and `contextCloseTimeoutMs`; it never contains credentials or task content.
+
+The context bar also shows the durable binding, its source, the last on-demand inspection outcome, and optional Webhook availability. Passive iframe browsing never changes the binding: only a successful validated tool operation or a uniquely matched annotation Webhook does so. An authenticated Webhook that cannot be assigned to exactly one Session is reported as `unassigned` without changing any binding.
 
 ## Model Experience
 
@@ -88,11 +99,11 @@ The browser binds the selected Session after React commits, opens the lease, res
 
 #### What the model sees
 
-The seven tool schemas and descriptions listed in the generated [tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-label-studio) are present while this plugin is composed. Tool results report endpoint availability, stable REST ids and URLs, acknowledged task navigation, active-task prediction creation, or the complete active project/task JSON; authentication failures name only the unresolved credential reference.
+The eight tool schemas and descriptions listed in the generated [tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-label-studio) are present while this plugin is composed. Tool results report endpoint availability, stable REST ids and URLs, acknowledged task navigation, label-config updates, prediction creation, or the complete active project/task JSON; authentication failures name only the unresolved credential reference.
 
 #### Token effect
 
-Fixed while the plugin is composed: the seven tool schemas are included in each native tool request, or their generated SDK declarations are included under Code Mode. Active-task result size depends on the selected task and is bounded by `activeTaskMaxBytes`.
+Fixed while the plugin is composed: the eight tool schemas are included in each native tool request, or their generated SDK declarations are included under Code Mode. Active-task result size depends on the selected task and is bounded by `activeTaskMaxBytes`.
 
 Page selection and restoration add no Session events and do not change `deriveMessages()` output. Only an explicitly invoked model tool adds the ordinary tool call and result events owned by DSH.
 
@@ -108,4 +119,5 @@ Prefix-stable while the package configuration and visible tool set stay unchange
 - **Identifiers only in browser context** — synchronization publishes the current project, task, and optional annotation ids, not task data, saved annotations, predictions, credentials, or tokens.
 - **Label Studio owns login and data storage** — the iframe may show its login page, and the plugin does not change Label Studio's database, media directory, user management, or local-file serving configuration.
 - **Narrow screens squeeze both applications** — after details closes and the workbench reaches its normal drag floor, the conversation may become very narrow; at extreme widths the rendered workbench also drops below that floor to keep the grid inside the frame.
+- **Label Studio 1.22.0 Community Webhook scope** — this version rejects organization registrations with `project: null`, so the plugin creates project-scoped Webhooks for projects that exist at startup. A project created only through the Label Studio UI while the plugin is already running is included after the next plugin restart; model tools still bind their successful operations directly.
 # DSH-label-studio

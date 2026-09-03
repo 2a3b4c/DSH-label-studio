@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { LabelStudioBindingTarget } from '@deepseek-ai/dsh-label-studio-protocol'
 import type { LabelStudioApi, LabelStudioSelectedTaskView, LabelStudioTask } from './api.ts'
 import { LabelStudioHttpError, validateSelectedTask } from './api.ts'
 import {
@@ -14,8 +15,11 @@ import {
 import type { LabelStudioChangeBroker } from './change-broker.ts'
 import type { LabelStudioContextRegistry } from './context-registry.ts'
 import type { LabelStudioOperationGate } from './lifecycle.ts'
+import type { LabelStudioOperationContextResolver, LabelStudioTargetSelector } from './operation-context.ts'
 import type { LabelStudioRuntime } from './runtime.ts'
 import type { ResolvedConfig } from './config.ts'
+import type { LabelStudioSessionIdentity } from './session-context-spec.ts'
+import type { LabelStudioSessionContextStore } from './session-context-store.ts'
 import {
   presentActiveTaskCall,
   presentActiveTaskMeta,
@@ -25,6 +29,7 @@ import {
   presentFocusTaskCall,
   presentImportTasksCall,
   presentStatusCall,
+  presentUpdateLabelConfigCall,
 } from './present.ts'
 
 /**
@@ -35,6 +40,8 @@ import {
  * @param contexts - Session context registry reserved for context-aware tools.
  * @param changes - browser event broker reserved for mutation notifications.
  * @param operations - shared package cancellation and quiescence gate.
+ * @param resolver - shared explicit, binding, and current-page target resolver.
+ * @param bindings - binding revision reader used before target-free project creation.
  * @param policy - model-output byte limit and browser focus deadline owned by the Host configuration.
  * @returns disposer unregistering every tool in reverse order.
  */
@@ -45,7 +52,11 @@ export function registerLabelStudioTools(
   contexts: LabelStudioContextRegistry,
   changes: LabelStudioChangeBroker,
   operations: LabelStudioOperationGate,
-  policy: Pick<ResolvedConfig, 'activeTaskMaxBytes' | 'focusAckTimeoutMs'>,
+  resolver: LabelStudioOperationContextResolver,
+  bindings: Pick<LabelStudioSessionContextStore, 'readBinding'>,
+  policy: Pick<ResolvedConfig, 'activeTaskMaxBytes' | 'focusAckTimeoutMs'> & {
+    readonly ensureWebhook?: (signal: AbortSignal) => Promise<void>
+  },
 ): () => void {
   const disposers: Array<() => void> = []
   disposers.push(ctx.tools.register(defineTool({
@@ -71,7 +82,11 @@ export function registerLabelStudioTools(
           : `Label Studio is unavailable at ${value.baseUrl}.`,
       }],
     },
-    execute: (_args, exec) => operations.run(exec.signal, signal => runtime.status(signal)),
+    execute: (_args, exec) => operations.run(exec.signal, async (signal) => {
+      const status = await runtime.status(signal)
+      if (status.available && policy.ensureWebhook !== undefined) await policy.ensureWebhook(signal)
+      return status
+    }),
     presentCall: presentStatusCall,
   })))
 
@@ -79,7 +94,8 @@ export function registerLabelStudioTools(
     name: 'label_studio_create_project',
     description:
       'Create a Label Studio project through the authenticated REST API. Supply Label Studio XML in label_config '
-      + 'when the project must be immediately ready for annotation. Returns the project id and browser URL.',
+      + 'when the project must be immediately ready for annotation. The successful project becomes this DSH '
+      + 'Session binding. Returns the project id and browser URL.',
     parameters: {
       title: { type: 'string', required: true, description: 'Project title.' },
       label_config: { type: 'string', description: 'Optional Label Studio labeling-interface XML.' },
@@ -93,23 +109,30 @@ export function registerLabelStudioTools(
           id: { type: 'number', required: true },
           title: { type: 'string', required: true },
           webUrl: { type: 'string', required: true },
+          warning: { type: 'string', enum: ['binding-conflict'] },
         },
       },
       render: (_args, value) => [{
-        type: 'text', text: `Created Label Studio project ${value.id} (${value.title}): ${value.webUrl}`,
+        type: 'text',
+        text: `Created Label Studio project ${value.id} (${value.title}): ${value.webUrl}${bindingWarningSuffix(value.warning)}`,
       }],
     },
     async execute(args, exec) {
       return operations.run(exec.signal, async (signal) => {
+        const identity = requireSessionIdentity(exec.agent, 'project creation')
+        const expectedBindingRevision = bindings.readBinding(identity).revision
         await requireAvailable(runtime, signal)
         const project = await api.createProject({
           title: args.title,
           ...args.label_config === undefined ? {} : { labelConfig: args.label_config },
           ...args.description === undefined ? {} : { description: args.description },
         }, signal)
+        const target = { kind: 'project', projectId: labelStudioProjectId(project.id) } as const
+        const warning = await commitWarning(resolver, identity, target, expectedBindingRevision)
         return {
           ...project,
           webUrl: `${runtime.config.baseUrl}/projects/${project.id}/data`,
+          ...warning,
         }
       })
     },
@@ -119,10 +142,12 @@ export function registerLabelStudioTools(
   disposers.push(ctx.tools.register(defineTool({
     name: 'label_studio_import_tasks',
     description:
-      'Import JSON tasks into an existing Label Studio project. Each task must contain a data object whose keys '
-      + 'match the project label configuration. Returns the accepted task ids when Label Studio supplies them.',
+      'Import JSON tasks into an existing Label Studio project. Supply project_id for an explicit target, set '
+      + 'current_page when the user refers to the visible iframe, or omit both to use this DSH Session binding. '
+      + 'Each task data object must match the project label configuration.',
     parameters: {
-      project_id: { type: 'number', required: true, description: 'Target Label Studio project id.' },
+      project_id: { type: 'number', description: 'Optional explicit Label Studio project id.' },
+      current_page: { type: 'boolean', description: 'Inspect the visible iframe instead of reusing the Session binding.' },
       tasks: { type: 'json', required: true, description: 'JSON array of Label Studio task objects.' },
     },
     output: {
@@ -133,18 +158,31 @@ export function registerLabelStudioTools(
           projectId: { type: 'number', required: true },
           taskCount: { type: 'number', required: true },
           taskIds: { type: 'array', required: true, items: { type: 'number' } },
+          warning: { type: 'string', enum: ['binding-conflict'] },
         },
       },
       render: (_args, value) => [{
-        type: 'text', text: `Imported ${value.taskCount} tasks into Label Studio project ${value.projectId}.`,
+        type: 'text',
+        text: `Imported ${value.taskCount} tasks into Label Studio project ${value.projectId}.${bindingWarningSuffix(value.warning)}`,
       }],
     },
     async execute(args, exec) {
       return operations.run(exec.signal, async (signal) => {
+        const identity = requireSessionIdentity(exec.agent, 'task import')
         const tasks = parseTasks(args.tasks)
         await requireAvailable(runtime, signal)
-        const imported = await api.importTasks(args.project_id, tasks, signal)
-        return { projectId: args.project_id, ...imported }
+        const context = await resolver.resolve(
+          identity,
+          'project',
+          projectSelector(args.project_id, args.current_page),
+          signal,
+        )
+        const target = { kind: 'project', projectId: context.target.projectId } as const
+        const imported = await api.importTasks(target.projectId, tasks, signal)
+        const warning = await commitWarning(
+          resolver, identity, target, context.expectedBindingRevision,
+        )
+        return { projectId: target.projectId, ...imported, ...warning }
       })
     },
     presentCall: presentImportTasksCall,
@@ -153,11 +191,13 @@ export function registerLabelStudioTools(
   disposers.push(ctx.tools.register(defineTool({
     name: 'label_studio_create_prediction',
     description:
-      'Create a pre-annotation prediction for one existing Label Studio task. result must use the project labeling '
-      + 'configuration names and Label Studio prediction result format. This never updates a saved annotation. '
-      + 'Returns the prediction and task ids.',
+      'Create a pre-annotation prediction for one Label Studio task. Supply task_id and optional project_id for an '
+      + 'explicit target, set current_page when the user refers to the visible iframe, or omit ids to reuse this '
+      + 'DSH Session task binding. This never updates a saved annotation.',
     parameters: {
-      task_id: { type: 'number', required: true, description: 'Existing Label Studio task id.' },
+      task_id: { type: 'number', description: 'Optional explicit Label Studio task id.' },
+      project_id: { type: 'number', description: 'Optional explicit project used to verify task ownership.' },
+      current_page: { type: 'boolean', description: 'Inspect the visible iframe instead of reusing the Session binding.' },
       result: { type: 'json', required: true, description: 'JSON array of Label Studio prediction result objects.' },
       model_version: { type: 'string', description: 'Optional model or workflow version recorded with the prediction.' },
       score: { type: 'number', description: 'Optional prediction score.' },
@@ -170,22 +210,36 @@ export function registerLabelStudioTools(
           id: { type: 'number', required: true },
           taskId: { type: 'number', required: true },
           modelVersion: { type: 'string' },
+          warning: { type: 'string', enum: ['binding-conflict'] },
         },
       },
       render: (_args, value) => [{
-        type: 'text', text: `Created Label Studio prediction ${value.id} for task ${value.taskId}.`,
+        type: 'text',
+        text: `Created Label Studio prediction ${value.id} for task ${value.taskId}.${bindingWarningSuffix(value.warning)}`,
       }],
     },
     async execute(args, exec) {
       return operations.run(exec.signal, async (signal) => {
+        const identity = requireSessionIdentity(exec.agent, 'prediction creation')
         const result = parseArray(args.result, 'result')
         await requireAvailable(runtime, signal)
-        return api.createPrediction({
-          taskId: args.task_id,
+        const context = await resolver.resolve(
+          identity,
+          'task',
+          taskSelector(args.project_id, args.task_id, args.current_page),
+          signal,
+        )
+        const target = requireTaskTarget(context.target)
+        const prediction = await api.createPrediction({
+          taskId: target.taskId,
           result,
           ...args.model_version === undefined ? {} : { modelVersion: args.model_version },
           ...args.score === undefined ? {} : { score: args.score },
         }, signal)
+        const warning = await commitWarning(
+          resolver, identity, target, context.expectedBindingRevision,
+        )
+        return { ...prediction, ...warning }
       })
     },
     presentCall: presentCreatePredictionCall,
@@ -194,11 +248,11 @@ export function registerLabelStudioTools(
   disposers.push(ctx.tools.register(defineTool({
     name: 'label_studio_create_active_prediction',
     description:
-      'Create a pre-annotation prediction for the current Label Studio workbench task. Supply result explicitly '
-      + 'using the project label configuration; do not infer it from saved annotations. The tool validates the '
-      + 'task association, rejects a target changed before dispatch, and marks the active page for refresh after '
-      + 'Label Studio confirms creation. It never updates a saved annotation.',
+      'Create a pre-annotation prediction for this DSH Session task binding. Set current_page when the user refers '
+      + 'to the visible iframe; otherwise an absent task binding triggers one on-demand inspection. Supply result '
+      + 'explicitly using the project label configuration. This never updates a saved annotation.',
     parameters: {
+      current_page: { type: 'boolean', description: 'Force one inspection of the visible Label Studio iframe.' },
       result: {
         type: 'json',
         required: true,
@@ -217,50 +271,42 @@ export function registerLabelStudioTools(
           taskId: { type: 'number', required: true },
           modelVersion: { type: 'string' },
           eventRevision: { type: 'number', required: true },
+          warning: { type: 'string', enum: ['binding-conflict'] },
         },
       },
       render: (_args, value) => [{
         type: 'text',
-        text: `Created Label Studio prediction ${value.id} for active task ${value.taskId} in project ${value.projectId}.`,
+        text: `Created Label Studio prediction ${value.id} for active task ${value.taskId} in project ${value.projectId}.${bindingWarningSuffix(value.warning)}`,
       }],
     },
     async execute(args, exec) {
       return operations.run(exec.signal, async (signal) => {
-        if (exec.agent === undefined) {
-          throw new Error('label-studio: active prediction creation requires a DSH Session')
-        }
-        const active = contexts.getLive(exec.agent.id)
-        if (active === undefined) {
-          throw new Error('label-studio: this Session has no live active task')
-        }
+        const identity = requireSessionIdentity(exec.agent, 'active prediction creation')
         const result = parseArray(args.result, 'result')
-        const task = await api.getTask(active.target.taskId, signal)
-        if (task.id !== active.target.taskId || task.projectId !== active.target.projectId) {
-          throw new Error('label-studio: active task project association does not match Label Studio')
-        }
-        const current = contexts.getLive(exec.agent.id)
-        if (current === undefined
-          || current.leaseId !== active.leaseId
-          || current.generation !== active.generation
-          || current.targetRevision !== active.targetRevision) {
-          throw new Error('label-studio: active task changed before prediction dispatch')
-        }
+        const context = await resolver.resolve(
+          identity,
+          'task',
+          args.current_page === true ? { mode: 'current-page' } : { mode: 'binding' },
+          signal,
+        )
+        const target = requireTaskTarget(context.target)
         const prediction = await api.createPrediction({
-          taskId: active.target.taskId,
+          taskId: target.taskId,
           result,
           ...args.model_version === undefined ? {} : { modelVersion: args.model_version },
           ...args.score === undefined ? {} : { score: args.score },
         }, signal)
-        if (prediction.taskId !== active.target.taskId) {
-          throw new Error('label-studio: created prediction task does not match the active task')
-        }
-        const event = changes.publishTaskChanged(exec.agent.id, active.target.taskId, 'prediction-created')
+        const warning = await commitWarning(
+          resolver, identity, target, context.expectedBindingRevision,
+        )
+        const event = changes.publishTaskChanged(identity.sessionId, target.taskId, 'prediction-created')
         return {
           id: prediction.id,
-          projectId: active.target.projectId,
+          projectId: target.projectId,
           taskId: prediction.taskId,
           ...prediction.modelVersion === undefined ? {} : { modelVersion: prediction.modelVersion },
           eventRevision: event.eventRevision,
+          ...warning,
         }
       })
     },
@@ -271,7 +317,8 @@ export function registerLabelStudioTools(
     name: 'label_studio_focus_task',
     description:
       'Navigate the Label Studio workbench for this DSH Session to a project task and optional saved annotation. '
-      + 'Returns only after the browser applies the task URL; the embedded page may still be loading.',
+      + 'The tool verifies the task-project association first and binds the task only after the browser applies '
+      + 'the URL. The embedded page may still be loading.',
     parameters: {
       project_id: { type: 'number', required: true, description: 'Target Label Studio project id.' },
       task_id: { type: 'number', required: true, description: 'Target Label Studio task id.' },
@@ -286,42 +333,55 @@ export function registerLabelStudioTools(
           taskId: { type: 'number', required: true },
           annotationId: { type: 'number' },
           targetRevision: { type: 'number', required: true },
+          warning: { type: 'string', enum: ['binding-conflict'] },
         },
       },
       render: (_args, value) => [{
         type: 'text',
-        text: `Label Studio workbench applied the URL for task ${value.taskId} in project ${value.projectId}; page loading was not checked.`,
+        text: `Label Studio workbench applied the URL for task ${value.taskId} in project ${value.projectId}; page loading was not checked.${bindingWarningSuffix(value.warning)}`,
       }],
     },
     async execute(args, exec) {
       return operations.run(exec.signal, async (signal) => {
-        if (exec.agent === undefined) {
-          throw new Error('label-studio: task focus requires a DSH Session')
-        }
-        const binding = contexts.getLease(exec.agent.id)
-        if (binding === undefined) {
+        const identity = requireSessionIdentity(exec.agent, 'task focus')
+        const leaseBinding = contexts.getLease(identity.sessionId)
+        if (leaseBinding === undefined) {
           throw new Error('label-studio: this Session has no live Label Studio browser lease')
         }
-        const target = {
+        const context = await resolver.resolve(identity, 'task', {
+          mode: 'explicit',
           projectId: labelStudioProjectId(args.project_id),
           taskId: labelStudioTaskId(args.task_id),
-          ...args.annotation_id === undefined
-            ? {}
-            : { annotationId: labelStudioAnnotationId(args.annotation_id) },
+          ...args.annotation_id === undefined ? {} : { annotationId: labelStudioAnnotationId(args.annotation_id) },
+        }, signal)
+        const target = requireTaskTarget(context.target)
+        const browserTarget = {
+          projectId: target.projectId,
+          taskId: target.taskId,
+          ...target.annotationId === undefined ? {} : { annotationId: target.annotationId },
         }
         const correlationId = labelStudioFocusCorrelationId(randomUUID())
         const reservation = contexts.reserveFocusTarget(
-          binding.lease.leaseId,
-          binding.lease.generation,
+          leaseBinding.lease.leaseId,
+          leaseBinding.lease.generation,
           correlationId,
         )
         const committed = await changes.requestFocus(
-          { sessionId: exec.agent.id, createdAt: exec.agent.session.header.createdAt },
+          identity,
           correlationId,
           reservation,
-          target,
+          browserTarget,
           policy.focusAckTimeoutMs,
           signal,
+        )
+        const committedTarget = {
+          kind: 'task',
+          projectId: committed.target.projectId,
+          taskId: committed.target.taskId,
+          ...committed.target.annotationId === undefined ? {} : { annotationId: committed.target.annotationId },
+        } as const
+        const warning = await commitWarning(
+          resolver, identity, committedTarget, context.expectedBindingRevision,
         )
         return {
           projectId: committed.target.projectId,
@@ -330,6 +390,7 @@ export function registerLabelStudioTools(
             ? {}
             : { annotationId: committed.target.annotationId },
           targetRevision: committed.targetRevision,
+          ...warning,
         }
       })
     },
@@ -337,11 +398,61 @@ export function registerLabelStudioTools(
   })))
 
   disposers.push(ctx.tools.register(defineTool({
+    name: 'label_studio_update_label_config',
+    description:
+      'Replace one Label Studio project labeling interface. Supply project_id for an explicit target, set '
+      + 'current_page when the user refers to the visible iframe, or omit both to use this DSH Session binding. '
+      + 'Only label_config is sent to Label Studio.',
+    parameters: {
+      label_config: { type: 'string', required: true, description: 'Complete Label Studio labeling-interface XML.' },
+      project_id: { type: 'number', description: 'Optional explicit Label Studio project id.' },
+      current_page: { type: 'boolean', description: 'Inspect the visible iframe instead of reusing the Session binding.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          projectId: { type: 'number', required: true },
+          labelConfig: { type: 'string', required: true },
+          warning: { type: 'string', enum: ['binding-conflict'] },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Updated the label config for Label Studio project ${value.projectId}.${bindingWarningSuffix(value.warning)}`,
+      }],
+    },
+    async execute(args, exec) {
+      return operations.run(exec.signal, async (signal) => {
+        const identity = requireSessionIdentity(exec.agent, 'label-config update')
+        await requireAvailable(runtime, signal)
+        const context = await resolver.resolve(
+          identity,
+          'project',
+          projectSelector(args.project_id, args.current_page),
+          signal,
+        )
+        const target = { kind: 'project', projectId: context.target.projectId } as const
+        const updated = await api.updateProjectLabelConfig(target.projectId, args.label_config, signal)
+        const warning = await commitWarning(
+          resolver, identity, target, context.expectedBindingRevision,
+        )
+        return { projectId: updated.id, labelConfig: updated.labelConfig, ...warning }
+      })
+    },
+    presentCall: presentUpdateLabelConfigCall,
+  })))
+
+  disposers.push(ctx.tools.register(defineTool({
     name: 'label_studio_get_active_task',
     description:
       'Read the project labeling configuration, task data, saved annotations, and predictions for the current '
-      + 'DSH Session active in the Label Studio workbench. Takes no task id because the live browser lease owns it.',
-    parameters: {},
+      + 'DSH Session task binding. Set current_page when the user explicitly refers to the visible iframe; an '
+      + 'absent task binding otherwise triggers one on-demand inspection.',
+    parameters: {
+      current_page: { type: 'boolean', description: 'Force one inspection of the visible Label Studio iframe.' },
+    },
     output: {
       schema: {
         type: 'object',
@@ -398,35 +509,41 @@ export function registerLabelStudioTools(
               },
             },
           },
+          warning: { type: 'string', enum: ['binding-conflict'] },
         },
       },
       render: (_args, value) => activeTaskBlocks(value, policy.activeTaskMaxBytes),
       presentationMeta: (_args, value) =>
         presentActiveTaskMeta(value as LabelStudioSelectedTaskView),
     },
-    async execute(_args, exec) {
+    async execute(args, exec) {
       return operations.run(exec.signal, async (signal) => {
-        if (exec.agent === undefined) {
-          throw new Error('label-studio: active-task reads require a DSH Session')
-        }
-        const active = contexts.getLive(exec.agent.id)
-        if (active === undefined) {
-          throw new Error('label-studio: this Session has no live active task')
-        }
+        const identity = requireSessionIdentity(exec.agent, 'active-task read')
+        const context = await resolver.resolve(
+          identity,
+          'task',
+          args.current_page === true ? { mode: 'current-page' } : { mode: 'binding' },
+          signal,
+        )
+        const target = requireTaskTarget(context.target)
         let project
         try {
-          project = await api.getProject(active.target.projectId, signal)
+          project = await api.getProject(target.projectId, signal)
         } catch (error) {
-          if (isMissingProjectResponse(error, active.target.projectId)) {
+          if (isMissingProjectResponse(error, target.projectId)) {
             await changes.markProjectDeleted(
-              { sessionId: exec.agent.id, createdAt: exec.agent.session.header.createdAt },
-              active.target.projectId,
+              identity,
+              target.projectId,
             )
           }
           throw error
         }
-        const task = await api.getTask(active.target.taskId, signal)
-        return validateSelectedTask(active.target, project, task)
+        const task = await api.getTask(target.taskId, signal)
+        const selected = validateSelectedTask(target, project, task)
+        const warning = await commitWarning(
+          resolver, identity, target, context.expectedBindingRevision,
+        )
+        return { ...selected, ...warning }
       })
     },
     presentCall: presentActiveTaskCall,
@@ -443,6 +560,60 @@ function activeTaskBlocks(value: unknown, maxBytes: number): Array<{ type: 'text
     throw new Error(`label-studio: active task result exceeds activeTaskMaxBytes (${bytes} > ${maxBytes})`)
   }
   return blocks
+}
+
+function bindingWarningSuffix(warning: 'binding-conflict' | undefined): string {
+  return warning === undefined
+    ? ''
+    : ' Warning: the business operation succeeded, but a newer Session binding was kept (binding-conflict).'
+}
+
+function requireSessionIdentity(
+  agent: {
+    readonly id: LabelStudioSessionIdentity['sessionId']
+    readonly session: { readonly header: { readonly createdAt: number } }
+  } | undefined,
+  operation: string,
+): LabelStudioSessionIdentity {
+  if (agent === undefined) throw new Error(`label-studio: ${operation} requires a DSH Session`)
+  return { sessionId: agent.id, createdAt: agent.session.header.createdAt }
+}
+
+function projectSelector(projectId: number | undefined, currentPage: boolean | undefined): LabelStudioTargetSelector {
+  if (projectId !== undefined) return { mode: 'explicit', projectId: labelStudioProjectId(projectId) }
+  return currentPage === true ? { mode: 'current-page' } : { mode: 'binding' }
+}
+
+function taskSelector(
+  projectId: number | undefined,
+  taskId: number | undefined,
+  currentPage: boolean | undefined,
+): LabelStudioTargetSelector {
+  if (projectId !== undefined || taskId !== undefined) {
+    return {
+      mode: 'explicit',
+      ...(projectId === undefined ? {} : { projectId: labelStudioProjectId(projectId) }),
+      ...(taskId === undefined ? {} : { taskId: labelStudioTaskId(taskId) }),
+    }
+  }
+  return currentPage === true ? { mode: 'current-page' } : { mode: 'binding' }
+}
+
+function requireTaskTarget(target: LabelStudioBindingTarget): Extract<LabelStudioBindingTarget, { kind: 'task' }> {
+  if (target.kind !== 'task') throw new Error('label-studio: resolved target does not identify a task')
+  return target
+}
+
+async function commitWarning(
+  resolver: LabelStudioOperationContextResolver,
+  identity: LabelStudioSessionIdentity,
+  target: LabelStudioBindingTarget,
+  expectedBindingRevision: number,
+): Promise<{ warning?: never } | { warning: 'binding-conflict' }> {
+  const outcome = await resolver.commitSuccessfulResult(
+    identity, target, 'tool-result', expectedBindingRevision,
+  )
+  return outcome.kind === 'conflict' ? { warning: 'binding-conflict' } : {}
 }
 
 async function requireAvailable(runtime: LabelStudioRuntime, signal: AbortSignal): Promise<void> {

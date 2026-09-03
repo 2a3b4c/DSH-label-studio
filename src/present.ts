@@ -25,9 +25,10 @@ export function presentCreateProjectCall(args: { title: string }): ToolCallView 
  * @param args - target project and unvalidated task payload.
  * @returns generic execution card containing the import count.
  */
-export function presentImportTasksCall(args: { project_id: number; tasks: unknown }): ToolCallView {
+export function presentImportTasksCall(args: { project_id?: number; current_page?: boolean; tasks: unknown }): ToolCallView {
   const count = Array.isArray(args.tasks) ? args.tasks.length : 0
-  return { card: 'generic', title: `Import ${count} tasks into Label Studio project ${args.project_id}`, kind: 'execute' }
+  const target = args.project_id === undefined ? 'selected Label Studio project' : `Label Studio project ${args.project_id}`
+  return { card: 'generic', title: `Import ${count} tasks into ${target}`, kind: 'execute' }
 }
 
 /**
@@ -35,8 +36,33 @@ export function presentImportTasksCall(args: { project_id: number; tasks: unknow
  * @param args - target task id.
  * @returns generic execution card for prediction creation.
  */
-export function presentCreatePredictionCall(args: { task_id: number }): ToolCallView {
-  return { card: 'generic', title: `Create prediction for Label Studio task ${args.task_id}`, kind: 'execute' }
+export function presentCreatePredictionCall(args: { task_id?: number }): ToolCallView {
+  return {
+    card: 'generic',
+    title: args.task_id === undefined
+      ? 'Create prediction for selected Label Studio task'
+      : `Create prediction for Label Studio task ${args.task_id}`,
+    kind: 'execute',
+  }
+}
+
+/**
+ * Present a Label Studio labeling-interface update without exposing its XML.
+ * @param args - optional target project and omitted label configuration content.
+ * @returns generic execution card with no filesystem locations.
+ */
+export function presentUpdateLabelConfigCall(args: {
+  project_id?: number
+  label_config: string
+}): ToolCallView {
+  return {
+    card: 'generic',
+    title: args.project_id === undefined
+      ? 'Update bound Label Studio project label config'
+      : `Update Label Studio project ${args.project_id} label config`,
+    kind: 'execute',
+    locations: [],
+  }
 }
 
 /**
@@ -46,6 +72,7 @@ export function presentCreatePredictionCall(args: { task_id: number }): ToolCall
  */
 export function presentCreateActivePredictionCall(_args: {
   result: unknown
+  current_page?: boolean
   model_version?: string
   score?: number
 }): ToolCallView {

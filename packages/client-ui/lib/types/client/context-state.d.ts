@@ -9,7 +9,14 @@ export interface LabelStudioControlledPage {
     applyPage(page: LabelStudioPageContext): Promise<void>;
     clearPage(): void;
     reloadPage(): void;
+    inspectCurrentPage(event: Extract<LabelStudioBrowserEvent, {
+        kind: 'inspect-current-page';
+    }>, lease: LabelStudioLeaseSnapshot, signal: AbortSignal): Promise<LabelStudioInspectionStatus | void>;
 }
+/** Last one-shot iframe inspection outcome visible in the workbench. */
+export type LabelStudioInspectionStatus = 'idle' | 'inspecting' | 'ready' | 'timeout' | 'unsupported' | 'unavailable';
+/** Current optional Webhook integration availability. */
+export type LabelStudioWebhookStatus = 'disabled' | 'ready' | 'unavailable';
 /** User-visible synchronization phase. */
 export type LabelStudioSyncStatus = 'no-session' | 'no-task' | 'leasing' | 'lease-active' | 'lease-conflict' | 'lease-expired' | 'syncing' | 'reconciling' | 'synced' | 'error';
 /** Durable Session-page synchronization phase. */
@@ -27,6 +34,9 @@ export interface LabelStudioContextSnapshot {
     readonly target?: LabelStudioActiveTarget | undefined;
     readonly sessionContext: LabelStudioSessionContextSnapshot;
     readonly sessionContextStatus: LabelStudioSessionContextStatus;
+    readonly inspectionStatus: LabelStudioInspectionStatus;
+    readonly webhookStatus: LabelStudioWebhookStatus;
+    readonly webhookUnassigned: boolean;
     readonly status: LabelStudioSyncStatus;
     readonly error?: string | undefined;
 }
@@ -34,6 +44,7 @@ interface ControllerOptions {
     readonly contextOpenRetryMs: number;
     readonly contextCloseTimeoutMs: number;
     readonly eventHistorySize: number;
+    readonly webhookStatus?: LabelStudioWebhookStatus;
 }
 /** Owns the current Session lease, target mutation queue, and event cursors. */
 export declare class LabelStudioContextController {

@@ -4,6 +4,8 @@ import { type CredentialRef } from '@deepseek-ai/dsh-credentials';
 export { DEFAULT_LABEL_STUDIO_BASE_URL } from './shared.ts';
 /** Supported ownership policy for an unavailable Label Studio endpoint. */
 export type LabelStudioLaunchMode = 'python' | 'external';
+/** Webhook availability policy for this plugin instance. */
+export type LabelStudioWebhookMode = 'required' | 'optional' | 'off';
 /** Default launcher used by the installable Bundle and repository example. */
 export declare const DEFAULT_LABEL_STUDIO_LAUNCH_MODE: LabelStudioLaunchMode;
 /** Default global Python command resolved by the subprocess provider. */
@@ -32,9 +34,21 @@ export declare const DEFAULT_CONTEXT_OPEN_RETRY_MS = 1000;
 export declare const DEFAULT_CONTEXT_CLOSE_TIMEOUT_MS = 1000;
 /** Default number of recently visited projects retained for each Session. */
 export declare const DEFAULT_RECENT_PROJECT_LIMIT = 10;
+/** Default deadline for one on-demand current iframe inspection. */
+export declare const DEFAULT_CURRENT_PAGE_TIMEOUT_MS = 5000;
+/** Default maximum decoded Label Studio HTML bytes buffered for bridge injection. */
+export declare const DEFAULT_FRAME_PROXY_HTML_MAX_BYTES = 2097152;
+/** Default Webhook policy keeps tools available when registration is unavailable. */
+export declare const DEFAULT_WEBHOOK_MODE: LabelStudioWebhookMode;
+/** Default exact DSH WebServer route receiving Label Studio events. */
+export declare const DEFAULT_WEBHOOK_PATH = "/api/label-studio/webhook";
+/** Default maximum decoded Webhook request bytes. */
+export declare const DEFAULT_WEBHOOK_MAX_BODY_BYTES = 1048576;
+/** Default Label Studio delivery deadline for a managed Python process. */
+export declare const DEFAULT_MANAGED_WEBHOOK_TIMEOUT_SECONDS = 5;
 /** User-configurable Label Studio plugin fields. */
 export interface Config {
-    /** Loopback HTTP(S) endpoint rendered in the browser and used by REST tools. */
+    /** Loopback HTTP origin used by REST tools and the isolated iframe proxy. */
     baseUrl?: string;
     /** Launcher used when the endpoint is unavailable; external mode never spawns. */
     launchMode?: LabelStudioLaunchMode;
@@ -64,6 +78,18 @@ export interface Config {
     contextCloseTimeoutMs?: number;
     /** Maximum recently visited Label Studio projects retained for each Session. */
     recentProjectLimit?: number;
+    /** Positive safe-integer deadline for one on-demand iframe inspection. */
+    currentPageTimeoutMs?: number;
+    /** Positive safe-integer decoded HTML limit for iframe bridge injection. */
+    frameProxyHtmlMaxBytes?: number;
+    /** Whether Webhook registration is required, optional, or disabled. */
+    webhookMode?: LabelStudioWebhookMode;
+    /** Exact absolute DSH WebServer path receiving Webhooks. */
+    webhookPath?: string;
+    /** Positive safe-integer request body byte limit. */
+    webhookMaxBodyBytes?: number;
+    /** Positive safe-integer Label Studio request timeout in seconds. */
+    managedWebhookTimeoutSeconds?: number;
 }
 /** Schemastery projection used by Cordis loaders and configuration UIs. */
 export declare const Config: z<Config>;
@@ -84,6 +110,12 @@ export interface ResolvedConfig {
     contextOpenRetryMs: number;
     contextCloseTimeoutMs: number;
     recentProjectLimit: number;
+    currentPageTimeoutMs: number;
+    frameProxyHtmlMaxBytes: number;
+    webhookMode: LabelStudioWebhookMode;
+    webhookPath: string;
+    webhookMaxBodyBytes: number;
+    managedWebhookTimeoutSeconds: number;
 }
 /**
  * Resolve every launcher and API default at the package boundary.

@@ -1,7 +1,11 @@
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import type { LabelStudioPageCommit, LabelStudioSessionContextSnapshot } from '@deepseek-ai/dsh-label-studio-protocol'
+import type {
+  LabelStudioBindingSnapshot,
+  LabelStudioPageCommit,
+  LabelStudioSessionContextSnapshot,
+} from '@deepseek-ai/dsh-label-studio-protocol'
 import { describe, expect, it, vi } from 'vitest'
 import type { LabelStudioApi } from '../src/api.ts'
 import { LabelStudioChangeBroker } from '../src/change-broker.ts'
@@ -13,6 +17,7 @@ import {
 } from '../src/context-types.ts'
 import { LabelStudioContextRegistry } from '../src/context-registry.ts'
 import { LabelStudioOperationGate } from '../src/lifecycle.ts'
+import { LabelStudioOperationContextResolver } from '../src/operation-context.ts'
 import type { LabelStudioRuntime } from '../src/runtime.ts'
 import type { LabelStudioSessionIdentity } from '../src/session-context-spec.ts'
 import type { LabelStudioSessionContextStore } from '../src/session-context-store.ts'
@@ -23,13 +28,25 @@ const SOURCE = labelStudioContextSourceId('123e4567-e89b-42d3-a456-426614174001'
 const CREATED_AT = 100
 
 function contextStore(): LabelStudioSessionContextStore {
+  let binding: LabelStudioBindingSnapshot = { recentProjects: [], revision: 0 }
   let snapshot: LabelStudioSessionContextSnapshot = {
-    page: { view: 'projects' }, recentProjects: [], revision: 0,
+    page: { view: 'projects' }, recentProjects: [], revision: 0, binding,
   }
   return {
     read: vi.fn(() => snapshot),
+    readBinding: vi.fn(() => binding),
+    commitBinding: vi.fn(async (_identity, request) => {
+      if (request.expectedRevision !== binding.revision) return { kind: 'conflict', current: binding }
+      binding = request.target === undefined
+        ? { recentProjects: [], revision: binding.revision + 1 }
+        : {
+          target: request.target, source: request.source, boundAt: 1,
+          recentProjects: [], revision: binding.revision + 1,
+        }
+      return { kind: 'committed', snapshot: binding }
+    }),
     commit: vi.fn(async (_identity: LabelStudioSessionIdentity, request: LabelStudioPageCommit) => {
-      snapshot = { page: request.page, recentProjects: [], revision: snapshot.revision + 1 }
+      snapshot = { page: request.page, recentProjects: [], revision: snapshot.revision + 1, binding }
       return snapshot
     }),
   } as unknown as LabelStudioSessionContextStore
@@ -40,10 +57,14 @@ async function setup(focusAckTimeoutMs = 1_000) {
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   const contexts = new LabelStudioContextRegistry(30_000)
-  const changes = new LabelStudioChangeBroker(contexts, 64, contextStore())
+  const sessionContexts = contextStore()
+  const changes = new LabelStudioChangeBroker(contexts, 64, sessionContexts)
   const operations = new LabelStudioOperationGate()
   const getProject = vi.fn()
-  const getTask = vi.fn()
+  const getTask = vi.fn().mockResolvedValue({
+    id: labelStudioTaskId(486), projectId: labelStudioProjectId(228),
+    data: {}, annotations: [], predictions: [],
+  })
   const api = {
     getProject,
     getTask,
@@ -52,6 +73,12 @@ async function setup(focusAckTimeoutMs = 1_000) {
     config: { baseUrl: 'http://127.0.0.1:8080' },
     status: vi.fn(),
   } as unknown as LabelStudioRuntime
+  const resolver = new LabelStudioOperationContextResolver(
+    sessionContexts,
+    { request: vi.fn() },
+    api,
+    1_000,
+  )
   const disposeTools = registerLabelStudioTools(
     ctx,
     runtime,
@@ -59,10 +86,12 @@ async function setup(focusAckTimeoutMs = 1_000) {
     contexts,
     changes,
     operations,
+    resolver,
+    sessionContexts,
     { activeTaskMaxBytes: 262_144, focusAckTimeoutMs },
   )
   const open = () => contexts.openLease(SESSION as never, SOURCE, changes.latestRevision(SESSION as never))
-  return { ctx, contexts, changes, operations, getProject, getTask, disposeTools, open }
+  return { ctx, contexts, changes, operations, getProject, getTask, sessionContexts, disposeTools, open }
 }
 
 function call(ctx: Context, args: unknown, controller = new AbortController(), sessionId?: string) {
@@ -96,7 +125,7 @@ describe('label_studio_focus_task', () => {
   })
 
   it('waits for the matching browser ACK before returning canonical output', async () => {
-    const { ctx, contexts, changes, getProject, getTask, open } = await setup()
+    const { ctx, contexts, changes, getProject, getTask, sessionContexts, open } = await setup()
     const { lease } = open()
     const pending = call(ctx, { project_id: 228, task_id: 486, annotation_id: 731 }, new AbortController(), SESSION)
     const event = await nextFocus(changes)
@@ -105,6 +134,7 @@ describe('label_studio_focus_task', () => {
       targetRevision: 1,
       committed: false,
     })
+    expect(event.target).toEqual({ projectId: 228, taskId: 486, annotationId: 731 })
     expect(contexts.getLive(SESSION as never)).toBeUndefined()
     await changes.acknowledgeFocus(
       lease.leaseId, lease.generation, event.correlationId, event.targetRevision, event.target,
@@ -117,7 +147,36 @@ describe('label_studio_focus_task', () => {
       text: 'Label Studio workbench applied the URL for task 486 in project 228; page loading was not checked.',
     }])
     expect(getProject).not.toHaveBeenCalled()
-    expect(getTask).not.toHaveBeenCalled()
+    expect(getTask).toHaveBeenCalledWith(labelStudioTaskId(486), expect.any(AbortSignal))
+    expect(sessionContexts.commitBinding).toHaveBeenCalledWith(
+      { sessionId: SESSION, createdAt: CREATED_AT },
+      {
+        expectedRevision: 0,
+        target: { kind: 'task', projectId: 228, taskId: 486, annotationId: 731 },
+        source: 'tool-result',
+      },
+    )
+  })
+
+  it('keeps an acknowledged focus successful when a newer binding wins CAS', async () => {
+    const { ctx, changes, sessionContexts, open } = await setup()
+    const { lease } = open()
+    vi.mocked(sessionContexts.commitBinding).mockResolvedValueOnce({
+      kind: 'conflict',
+      current: {
+        target: { kind: 'project', projectId: labelStudioProjectId(9) },
+        source: 'tool-result', boundAt: 2, recentProjects: [], revision: 1,
+      },
+    })
+    const pending = call(ctx, { project_id: 228, task_id: 486 }, new AbortController(), SESSION)
+    const event = await nextFocus(changes)
+    await changes.acknowledgeFocus(
+      lease.leaseId, lease.generation, event.correlationId, event.targetRevision, event.target,
+    )
+    const result = await pending
+    expect(result.isError).toBe(false)
+    expect(result.value).toMatchObject({ taskId: 486, warning: 'binding-conflict' })
+    expect(sessionContexts.commitBinding).toHaveBeenCalledOnce()
   })
 
   it('clears the old target while focus is pending and makes it readable only after ACK', async () => {

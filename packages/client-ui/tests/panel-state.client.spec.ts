@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { LabelStudioPanelController } from '../src/client/panel-state.ts'
 
 describe('Label Studio panel keep-alive state', () => {
@@ -24,11 +24,32 @@ describe('Label Studio panel keep-alive state', () => {
     await Promise.resolve()
     expect(settled).toBe(false)
     const snapshot = controller.store.getSnapshot()
+    expect(snapshot).toMatchObject({ open: false, mounted: true })
     expect(snapshot.targetUrl).toBe('http://127.0.0.1:8080/projects/228/data?task=486')
     controller.confirmApplied(snapshot.navigationRevision)
     await applied
     expect(settled).toBe(true)
     controller.clearPage()
     expect(controller.store.getSnapshot().targetUrl).toBeUndefined()
+  })
+
+  it('uses the proxy only in the iframe and opens the same route on the direct endpoint', async () => {
+    const controller = new LabelStudioPanelController(
+      'http://127.0.0.1:41000', 'http://127.0.0.1:8080',
+    )
+    const frame = document.createElement('iframe')
+    document.body.append(frame)
+    controller.attachFrame(frame)
+    expect(controller.currentFrameWindow()).toBe(frame.contentWindow)
+    const opened = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const applied = controller.applyPage({ view: 'task', projectId: 7, taskId: 11 } as never)
+    const snapshot = controller.store.getSnapshot()
+    expect(snapshot.targetUrl).toBe('http://127.0.0.1:41000/projects/7/data?task=11')
+    controller.openExternal()
+    expect(opened).toHaveBeenCalledWith(
+      'http://127.0.0.1:8080/projects/7/data?task=11', '_blank', 'noopener,noreferrer',
+    )
+    controller.confirmApplied(snapshot.navigationRevision)
+    await applied
   })
 })

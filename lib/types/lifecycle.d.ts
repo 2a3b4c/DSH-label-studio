@@ -25,7 +25,11 @@ export declare class LabelStudioOperationGate {
 export interface LabelStudioShutdownResources {
     readonly operations: LabelStudioOperationGate;
     readonly disposeTools: () => void;
+    readonly disposeWebhookIngress?: () => void;
     readonly disposeBrowser?: () => Promise<void>;
+    readonly disposeWebhookRegistration?: () => Promise<void>;
+    readonly disposeCurrentPages?: () => void;
+    readonly disposeFrameProxy?: () => Promise<void>;
     readonly disposeBroker: () => Promise<void>;
     readonly disposeRegistry: () => void;
     readonly disposeRuntime: () => Promise<void>;

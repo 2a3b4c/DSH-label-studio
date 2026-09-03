@@ -17,6 +17,8 @@ import type {
   LabelStudioLeaseSnapshot,
   LabelStudioNavigationSequence,
   LabelStudioPageContext,
+  LabelStudioInspectPageEvent,
+  LabelStudioInspectPageResponse,
   LabelStudioRpcError,
   LabelStudioRpcOutcome,
   LabelStudioTargetReservation,
@@ -90,7 +92,7 @@ export function isLabelStudioPluginFailure(error: unknown): error is LabelStudio
 
 type Parser<T> = (value: unknown) => T
 
-/** Calls and validates the plugin's seven fixed RPC endpoints. */
+/** Calls and validates the plugin's eight fixed RPC endpoints. */
 export class LabelStudioContextBridge {
   private readonly connection: Pick<ConnectionHandle, 'rpc' | 'generation'>
   private readonly channel: '/label-studio'
@@ -226,6 +228,29 @@ export class LabelStudioContextBridge {
     }, parseActiveContext, signal)
   }
 
+  /**
+   * Submit one exact current-page inspection outcome.
+   * @param lease - active browser lease.
+   * @param inspectionId - Host-issued inspection identity.
+   * @param outcome - validated structured iframe result.
+   * @param signal - Session/Connection generation cancellation.
+   * @returns idempotent Host acceptance receipt.
+   */
+  commitInspection(
+    lease: LabelStudioLeaseSnapshot,
+    inspectionId: LabelStudioInspectPageEvent['inspectionId'],
+    outcome: LabelStudioInspectPageResponse['outcome'],
+    signal?: AbortSignal,
+  ): Promise<{ readonly accepted: true }> {
+    return this.mutate('inspection/commit', {
+      ...leaseFields(lease), inspectionId, outcome,
+    }, (value) => {
+      const object = record(value, 'inspection receipt')
+      if (object.accepted !== true) throw new Error('invalid inspection receipt')
+      return { accepted: true }
+    }, signal)
+  }
+
   private mutate<T>(endpoint: string, payload: unknown, parse: Parser<T>, signal?: AbortSignal): Promise<T> {
     return this.call(endpoint, payload, parse, signal, true)
   }
@@ -345,24 +370,66 @@ function parsePage(value: unknown): LabelStudioPageContext {
 }
 function parseSessionContext(value: unknown): LabelStudioSessionContextSnapshot {
   const object = record(value, 'session context')
-  if (!Array.isArray(object.recentProjects)) throw new Error('invalid recentProjects')
   return {
     page: parsePage(object.page),
-    recentProjects: object.recentProjects.map((entry) => {
-      const recent = record(entry, 'recent project')
-      if (recent.availability !== 'available' && recent.availability !== 'deleted') {
-        throw new Error('invalid project availability')
-      }
-      return {
-        projectId: positive(recent.projectId, 'projectId') as never,
-        ...(recent.lastTaskId === undefined
-          ? {}
-          : { lastTaskId: positive(recent.lastTaskId, 'lastTaskId') as never }),
-        lastVisitedAt: integer(recent.lastVisitedAt, 'lastVisitedAt'),
-        availability: recent.availability,
-      }
-    }),
+    recentProjects: parseRecentProjects(object.recentProjects),
     revision: integer(object.revision, 'revision'),
+    binding: parseBinding(object.binding),
+  }
+}
+function parseRecentProjects(value: unknown): LabelStudioSessionContextSnapshot['recentProjects'] {
+  if (!Array.isArray(value)) throw new Error('invalid recentProjects')
+  return value.map((entry) => {
+    const recent = record(entry, 'recent project')
+    if (recent.availability !== 'available' && recent.availability !== 'deleted') {
+      throw new Error('invalid project availability')
+    }
+    return {
+      projectId: positive(recent.projectId, 'projectId') as never,
+      ...(recent.lastTaskId === undefined
+        ? {}
+        : { lastTaskId: positive(recent.lastTaskId, 'lastTaskId') as never }),
+      lastVisitedAt: integer(recent.lastVisitedAt, 'lastVisitedAt'),
+      availability: recent.availability,
+    }
+  })
+}
+function parseBinding(value: unknown): LabelStudioSessionContextSnapshot['binding'] {
+  const object = record(value, 'binding')
+  const recentProjects = parseRecentProjects(object.recentProjects)
+  const revision = integer(object.revision, 'binding revision')
+  if (object.target === undefined) {
+    if (object.source !== undefined || object.boundAt !== undefined) throw new Error('invalid empty binding')
+    return { recentProjects, revision }
+  }
+  if (object.source !== 'tool-result' && object.source !== 'webhook' && object.source !== 'current-page') {
+    throw new Error('invalid binding source')
+  }
+  const target = record(object.target, 'binding target')
+  const projectId = positive(target.projectId, 'projectId') as never
+  if (target.kind === 'project') {
+    return {
+      target: { kind: 'project', projectId },
+      source: object.source,
+      boundAt: integer(object.boundAt, 'boundAt'),
+      recentProjects,
+      revision,
+    }
+  }
+  if (target.kind !== 'task') throw new Error('invalid binding target kind')
+  return {
+    target: {
+      kind: 'task',
+      projectId,
+      taskId: positive(target.taskId, 'taskId') as never,
+      ...(target.annotationId === undefined
+        ? {}
+        : { annotationId: positive(target.annotationId, 'annotationId') as never }),
+    },
+    source: object.source,
+    boundAt: integer(object.boundAt, 'boundAt'),
+    recentProjects,
+    revision,
   }
 }
 function parseTarget(value: unknown): LabelStudioActiveTarget {
@@ -415,6 +482,25 @@ function parseEvent(value: unknown): LabelStudioEventBatch['events'][number] {
     if (object.reason !== 'prediction-created') throw new Error('invalid change reason')
     return { kind: 'task-changed', eventRevision, taskId: positive(object.taskId, 'taskId') as never, reason: object.reason }
   }
+  if (object.kind === 'inspect-current-page') {
+    return {
+      kind: 'inspect-current-page',
+      eventRevision,
+      inspectionId: string(object.inspectionId, 'inspectionId') as never,
+      deadlineAt: positive(object.deadlineAt, 'deadlineAt'),
+    }
+  }
+  if (object.kind === 'webhook-unassigned') {
+    if (object.reason !== 'no-matching-binding') throw new Error('invalid Webhook unassigned reason')
+    return { kind: 'webhook-unassigned', eventRevision, reason: object.reason }
+  }
+  if (object.kind === 'webhook-status') {
+    if (object.status !== 'ready' && object.status !== 'unavailable') throw new Error('invalid Webhook status')
+    return { kind: 'webhook-status', eventRevision, status: object.status }
+  }
+  if (object.kind === 'binding-changed') {
+    return { kind: 'binding-changed', eventRevision, binding: parseBinding(object.binding) }
+  }
   if (object.kind !== 'focus-task' || typeof object.committed !== 'boolean') throw new Error('invalid event kind')
   return {
     kind: 'focus-task', eventRevision,
@@ -444,6 +530,9 @@ function isPluginError(value: unknown): value is LabelStudioRpcError {
     'invalid-request', 'session-not-found', 'lease-conflict', 'lease-expired', 'stale-generation',
     'stale-revision', 'future-revision', 'focus-conflict', 'focus-not-found',
     'session-context-conflict', 'session-context-unavailable',
+    'binding-missing', 'binding-conflict', 'binding-target-mismatch',
+    'current-page-unavailable', 'current-page-timeout', 'current-page-unsupported',
+    'webhook-unavailable', 'webhook-unassigned',
   ].includes(value.code)
   if (!known) return false
   return value.code !== 'lease-conflict'

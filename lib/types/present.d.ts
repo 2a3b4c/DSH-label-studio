@@ -20,7 +20,8 @@ export declare function presentCreateProjectCall(args: {
  * @returns generic execution card containing the import count.
  */
 export declare function presentImportTasksCall(args: {
-    project_id: number;
+    project_id?: number;
+    current_page?: boolean;
     tasks: unknown;
 }): ToolCallView;
 /**
@@ -29,7 +30,16 @@ export declare function presentImportTasksCall(args: {
  * @returns generic execution card for prediction creation.
  */
 export declare function presentCreatePredictionCall(args: {
-    task_id: number;
+    task_id?: number;
+}): ToolCallView;
+/**
+ * Present a Label Studio labeling-interface update without exposing its XML.
+ * @param args - optional target project and omitted label configuration content.
+ * @returns generic execution card with no filesystem locations.
+ */
+export declare function presentUpdateLabelConfigCall(args: {
+    project_id?: number;
+    label_config: string;
 }): ToolCallView;
 /**
  * Present a prediction request for the current Session's active Label Studio task.
@@ -38,6 +48,7 @@ export declare function presentCreatePredictionCall(args: {
  */
 export declare function presentCreateActivePredictionCall(_args: {
     result: unknown;
+    current_page?: boolean;
     model_version?: string;
     score?: number;
 }): ToolCallView;

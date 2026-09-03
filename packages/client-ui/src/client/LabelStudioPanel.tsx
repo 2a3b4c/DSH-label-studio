@@ -18,15 +18,16 @@ export interface LabelStudioPanelProps {
   reload: () => void
   openExternal: () => void
   confirmApplied: (navigationRevision: number) => void
+  attachFrame: (frame: HTMLIFrameElement | null) => void
   selectTarget: (input: LabelStudioTargetInput) => Promise<void>
   selectPage: (page: LabelStudioPageContext) => Promise<void>
   t: TranslateNS<typeof NS>
 }
 
-/** Render the iframe only after first open and retain it while hidden. */
+/** Render a restored or explicitly opened iframe and retain it while hidden. */
 export function LabelStudioPanel({
   useLabelStudioPanel, useLabelStudioContext, baseUrl, open, width,
-  close, reload, openExternal, confirmApplied, selectTarget, selectPage, t,
+  close, reload, openExternal, confirmApplied, attachFrame, selectTarget, selectPage, t,
 }: LabelStudioPanelProps) {
   const state = useLabelStudioPanel(snapshot => snapshot)
   const context = useLabelStudioContext(snapshot => snapshot)
@@ -35,6 +36,9 @@ export function LabelStudioPanel({
   const [annotationId, setAnnotationId] = useState('')
   const [inputError, setInputError] = useState<string>()
   const [fullscreen, setFullscreen] = useState(false)
+  const recentProjects = context.sessionContext.binding.recentProjects.length > 0
+    ? context.sessionContext.binding.recentProjects
+    : context.sessionContext.recentProjects
   useEffect(() => {
     if (!open && fullscreen) setFullscreen(false)
   }, [fullscreen, open])
@@ -114,11 +118,26 @@ export function LabelStudioPanel({
         <div className={css.currentPage}>
           {t('panel.currentPage')}: {pageName(context.sessionContext.page, t)}
         </div>
-        {context.sessionContext.recentProjects.length > 0 && <nav
+        <div className={css.currentPage}>
+          {t('panel.binding')}: {bindingName(context.sessionContext.binding.target, t)}
+        </div>
+        {context.sessionContext.binding.source !== undefined && <div className={css.currentPage}>
+          {t('panel.bindingSource')}: {t(`panel.source.${context.sessionContext.binding.source}`)}
+        </div>}
+        <div className={css.contextFacts}>
+          <span className={css.statusBadge}>
+            {t('panel.inspection')}: {t(`panel.inspection.${context.inspectionStatus}`)}
+          </span>
+          <span className={css.statusBadge}>
+            {t('panel.webhook')}: {t(`panel.webhook.${context.webhookStatus}`)}
+            {context.webhookUnassigned ? ` · ${t('panel.webhook.unassigned')}` : ''}
+          </span>
+        </div>
+        {recentProjects.length > 0 && <nav
           className={css.recentProjects}
           aria-label={t('panel.recentProjects')}
         >
-          {context.sessionContext.recentProjects.map((project) => {
+          {recentProjects.map((project) => {
             const deleted = project.availability === 'deleted'
             const label = `${t('panel.project')} ${String(project.projectId)}${deleted ? ` (${t('panel.deleted')})` : ''}`
             return <button
@@ -133,6 +152,7 @@ export function LabelStudioPanel({
         <p className={css.bridgeLimitation}>{t('panel.bridgeLimitation')}</p>
       </div>
       <iframe
+        ref={attachFrame}
         key={state.reloadRevision}
         className={css.iframe}
         src={state.targetUrl ?? baseUrl}
@@ -148,4 +168,16 @@ function pageName(page: LabelStudioPageContext, t: TranslateNS<typeof NS>): stri
   if (page.view === 'project') return `${t('panel.project')} ${String(page.projectId)}`
   const annotation = page.annotationId === undefined ? '' : ` / ${t('panel.annotationId')} ${String(page.annotationId)}`
   return `${t('panel.project')} ${String(page.projectId)} / ${t('panel.taskId')} ${String(page.taskId)}${annotation}`
+}
+
+function bindingName(
+  target: LabelStudioContextSnapshot['sessionContext']['binding']['target'],
+  t: TranslateNS<typeof NS>,
+): string {
+  if (target === undefined) return t('panel.unbound')
+  if (target.kind === 'project') return `${t('panel.project')} ${String(target.projectId)}`
+  const annotation = target.annotationId === undefined
+    ? ''
+    : ` / ${t('panel.annotationId')} ${String(target.annotationId)}`
+  return `${t('panel.project')} ${String(target.projectId)} / ${t('panel.taskId')} ${String(target.taskId)}${annotation}`
 }

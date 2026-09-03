@@ -4,11 +4,13 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   LabelStudioActiveContext,
   LabelStudioActiveTarget,
+  LabelStudioBindingSnapshot,
   LabelStudioBrowserEvent,
   LabelStudioChangeReason,
   LabelStudioContextLeaseId,
   LabelStudioFocusCorrelationId,
   LabelStudioPageCommit,
+  LabelStudioPageInspectionId,
   LabelStudioProjectId,
   LabelStudioSessionContextSnapshot,
   LabelStudioTargetReservation,
@@ -112,6 +114,71 @@ export class LabelStudioChangeBroker {
     })
     this.append(state, event)
     return event
+  }
+
+  /**
+   * Publish one on-demand iframe inspection through the existing Session event stream.
+   * @param sessionId - Session whose browser lease owns the iframe.
+   * @param inspectionId - Host-generated one-shot request identity.
+   * @param deadlineAt - absolute response deadline.
+   * @returns the immutable published event.
+   */
+  publishCurrentPageInspection(
+    sessionId: SessionId,
+    inspectionId: LabelStudioPageInspectionId,
+    deadlineAt: number,
+  ): Extract<LabelStudioBrowserEvent, { kind: 'inspect-current-page' }> {
+    if (!Number.isSafeInteger(deadlineAt) || deadlineAt <= 0) {
+      throw new LabelStudioContextError('invalid-request', 'inspection deadline must be a positive safe integer')
+    }
+    const state = this.state(sessionId)
+    const event = Object.freeze({
+      kind: 'inspect-current-page' as const,
+      inspectionId,
+      deadlineAt,
+      eventRevision: this.nextRevision(state),
+    })
+    this.append(state, event)
+    return event
+  }
+
+  /** Publish a complete binding after Host-side deletion reconciliation. */
+  publishBindingChanged(
+    sessionId: SessionId,
+    binding: LabelStudioBindingSnapshot,
+  ): Extract<LabelStudioBrowserEvent, { kind: 'binding-changed' }> {
+    const state = this.state(sessionId)
+    const event = Object.freeze({
+      kind: 'binding-changed' as const,
+      binding,
+      eventRevision: this.nextRevision(state),
+    })
+    this.append(state, event)
+    return event
+  }
+
+  /** Broadcast a non-sensitive unmatched-Webhook status to every current plugin lease. */
+  publishWebhookUnassigned(): void {
+    for (const sessionId of this.registry.sessionIds()) {
+      const state = this.state(sessionId)
+      this.append(state, Object.freeze({
+        kind: 'webhook-unassigned' as const,
+        reason: 'no-matching-binding' as const,
+        eventRevision: this.nextRevision(state),
+      }))
+    }
+  }
+
+  /** Broadcast current optional Webhook availability to every current plugin lease. */
+  publishWebhookStatus(status: 'ready' | 'unavailable'): void {
+    for (const sessionId of this.registry.sessionIds()) {
+      const state = this.state(sessionId)
+      this.append(state, Object.freeze({
+        kind: 'webhook-status' as const,
+        status,
+        eventRevision: this.nextRevision(state),
+      }))
+    }
   }
 
   /**

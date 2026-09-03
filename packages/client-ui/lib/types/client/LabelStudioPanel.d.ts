@@ -15,10 +15,11 @@ export interface LabelStudioPanelProps {
     reload: () => void;
     openExternal: () => void;
     confirmApplied: (navigationRevision: number) => void;
+    attachFrame: (frame: HTMLIFrameElement | null) => void;
     selectTarget: (input: LabelStudioTargetInput) => Promise<void>;
     selectPage: (page: LabelStudioPageContext) => Promise<void>;
     t: TranslateNS<typeof NS>;
 }
-/** Render the iframe only after first open and retain it while hidden. */
-export declare function LabelStudioPanel({ useLabelStudioPanel, useLabelStudioContext, baseUrl, open, width, close, reload, openExternal, confirmApplied, selectTarget, selectPage, t, }: LabelStudioPanelProps): import("react").JSX.Element | null;
+/** Render a restored or explicitly opened iframe and retain it while hidden. */
+export declare function LabelStudioPanel({ useLabelStudioPanel, useLabelStudioContext, baseUrl, open, width, close, reload, openExternal, confirmApplied, attachFrame, selectTarget, selectPage, t, }: LabelStudioPanelProps): import("react").JSX.Element | null;
 //# sourceMappingURL=LabelStudioPanel.d.ts.map

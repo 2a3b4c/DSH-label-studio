@@ -35,8 +35,12 @@ function mountRoot() {
   const contextSnapshot = {
     sourceId: 'source' as never, navigationSequence: 0 as never, targetRevision: 0,
     eventRevision: 0, observedEventRevision: 0, bufferedEventCount: 0, status: 'no-session' as const,
-    sessionContext: { page: { view: 'projects' as const }, recentProjects: [], revision: 0 },
+    sessionContext: {
+      page: { view: 'projects' as const }, recentProjects: [], revision: 0,
+      binding: { recentProjects: [], revision: 0 },
+    },
     sessionContextStatus: 'idle' as const,
+    inspectionStatus: 'idle' as const, webhookStatus: 'disabled' as const, webhookUnassigned: false,
   }
   const context = {
     subscribe: () => () => {},
@@ -60,7 +64,7 @@ function mountRoot() {
     useLabelStudioPanel: hookOf(panel.store),
     useLabelStudioContext: hookOf(context),
     baseUrl: 'http://127.0.0.1:8080',
-    bindSession, confirmApplied: vi.fn(), selectTarget: vi.fn(), selectPage: vi.fn(),
+    bindSession, confirmApplied: vi.fn(), attachFrame: vi.fn(), selectTarget: vi.fn(), selectPage: vi.fn(),
     close: vi.fn(), reload: vi.fn(), openExternal: vi.fn(), t: key => key,
   })
   const view = render(<LabelStudioRoot {...props()} />)

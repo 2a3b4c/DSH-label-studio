@@ -401,6 +401,12 @@ export class LabelStudioContextRegistry {
     return record?.context.phase === 'committed' ? this.activeSnapshot(record) : undefined
   }
 
+  /** Return every current, unexpired Session lease id. */
+  sessionIds(): readonly SessionId[] {
+    if (this.disposed) return []
+    return [...this.bySession.keys()].filter(sessionId => this.recordForSession(sessionId) !== undefined)
+  }
+
   /**
    * Subscribe to authoritative lease removal.
    * @param listener - callback isolated from cleanup and sibling callbacks.

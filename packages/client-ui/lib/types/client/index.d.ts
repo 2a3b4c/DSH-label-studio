@@ -10,7 +10,9 @@ import { type LabelStudioKey } from './locales.ts';
 export { LabelStudioLayoutController } from './layout/service.ts';
 export { isLabelStudioBridgeFailure, isLabelStudioPluginFailure, isLabelStudioTransportUnknown, LabelStudioContextBridge, } from './context-bridge.ts';
 export type { LabelStudioBridgeFailure } from './context-bridge.ts';
-export type { LabelStudioControlledPage, LabelStudioContextSnapshot, LabelStudioSessionContextStatus, LabelStudioSyncStatus, } from './context-state.ts';
+export { LabelStudioCurrentPageBridge } from './current-page-bridge.ts';
+export type { LabelStudioInspectionRpc } from './current-page-bridge.ts';
+export type { LabelStudioControlledPage, LabelStudioContextSnapshot, LabelStudioInspectionStatus, LabelStudioSessionContextStatus, LabelStudioSyncStatus, LabelStudioWebhookStatus, } from './context-state.ts';
 export { LabelStudioContextController } from './context-state.ts';
 export { buildLabelStudioPageUrl, parseLabelStudioTargetInput } from './page-url.ts';
 export type { LabelStudioTargetInput } from './page-url.ts';
@@ -21,9 +23,14 @@ declare global {
         /** Host-validated Label Studio browser endpoint. */
         __DSH_LABEL_STUDIO__?: {
             baseUrl: string;
+            frameBaseUrl: string;
+            frameCapability: string;
+            inspectionProtocol: 'dsh-label-studio-page/v1';
+            currentPageTimeoutMs: number;
             contextOpenRetryMs: number;
             contextCloseTimeoutMs: number;
             eventHistorySize: number;
+            webhookStatus?: 'disabled' | 'ready' | 'unavailable';
         };
     }
 }
@@ -49,6 +56,7 @@ export interface LabelStudioRootInjected {
     baseUrl: string;
     bindSession: (sessionId: SessionId | undefined) => void;
     confirmApplied: (navigationRevision: number) => void;
+    attachFrame: (frame: HTMLIFrameElement | null) => void;
     selectTarget: (input: LabelStudioTargetInput) => Promise<void>;
     selectPage: (page: LabelStudioPageContext) => Promise<void>;
     close: () => void;

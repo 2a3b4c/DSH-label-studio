@@ -10,7 +10,9 @@ Label Studio Host 与浏览器插件共享的仅类型声明。该包让浏览�
 
 主入口不包含运行时值。Host 与浏览器 consumer 分别拥有自己的 JSON parser，并且只在对应 wire 字段通过验证后构造品牌值。独立的 invariant companion 只在运行时 invariant registry 中登记包所有权。
 
-Connection transport 负责外层 `RpcResult`，`LabelStudioRpcOutcome` 是内层业务结果。这种分层不会把插件错误码加入 Connection 的闭合框架错误集合。`lease/open` 返回持久页面 snapshot，`page/commit` 则使用 compare-and-swap revision 字段更新它。声明只包含 id、时间戳、可用状态、revision、租约状态和变更原因；它们不定义凭据、Token、样本数据或 annotation result 字段。
+Connection transport 负责外层 `RpcResult`，`LabelStudioRpcOutcome` 是内层业务结果。这种分层不会把插件错误码加入 Connection 的闭合框架错误集合。`lease/open` 返回持久页面 snapshot，`page/commit` 使用 compare-and-swap revision 字段更新页面，`inspection/commit` 接收一次匹配的 iframe 回执。声明只包含 id、时间戳、可用状态、revision、租约状态和变更原因；它们不定义凭据、Token、样本数据或 annotation result 字段。
+
+这些声明还把持久页面状态与每个 Session 的 binding target 和来源分开。一次性页面检查请求和响应只携带结构化的项目列表、project 或 task 位置；Webhook 状态和未匹配事件只暴露可用性，不会把被动浏览当成用户意图。
 
 ## 模型体验
 

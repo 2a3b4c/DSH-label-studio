@@ -22,3 +22,9 @@
         contextOpenRetryMs: 1000
         contextCloseTimeoutMs: 1000
         recentProjectLimit: 10
+        currentPageTimeoutMs: 5000
+        frameProxyHtmlMaxBytes: 2097152
+        webhookMode: optional
+        webhookPath: /api/label-studio/webhook
+        webhookMaxBodyBytes: 1048576
+        managedWebhookTimeoutSeconds: 5

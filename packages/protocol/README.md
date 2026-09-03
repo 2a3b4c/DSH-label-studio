@@ -10,7 +10,9 @@ The main entry exports branded project, task, annotation, prediction, source, le
 
 The main entry has no runtime values. Host and browser consumers own their JSON parsers and construct branded values only after validating the corresponding wire fields. The package's separate invariant companion only reserves package ownership with the runtime invariant registry.
 
-The Connection transport owns its outer `RpcResult`; `LabelStudioRpcOutcome` is the inner business result. This separation keeps plugin error codes out of Connection's closed framework error set. `lease/open` returns the durable page snapshot, while `page/commit` uses compare-and-swap revision fields to update it. The declarations contain identifiers, timestamps, availability, revisions, lease state, and change reasons only; they do not define fields for credentials, tokens, sample data, or annotation results.
+The Connection transport owns its outer `RpcResult`; `LabelStudioRpcOutcome` is the inner business result. This separation keeps plugin error codes out of Connection's closed framework error set. `lease/open` returns the durable page snapshot, `page/commit` uses compare-and-swap revision fields to update it, and `inspection/commit` accepts one matching iframe response. The declarations contain identifiers, timestamps, availability, revisions, lease state, and change reasons only; they do not define fields for credentials, tokens, sample data, or annotation results.
+
+The declarations also separate durable page state from the per-Session binding target and source. One-shot inspection request and response types carry only a structured projects, project, or task location, while Webhook status and unassigned events expose availability without treating passive browsing as intent.
 
 ## Model Experience
 

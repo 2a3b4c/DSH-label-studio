@@ -6,6 +6,7 @@ import type {
   LabelStudioContextSourceId,
   LabelStudioFocusCorrelationId,
   LabelStudioNavigationSequence,
+  LabelStudioPageInspectionId,
   LabelStudioPredictionId,
   LabelStudioProjectId,
   LabelStudioTaskId,
@@ -78,6 +79,14 @@ export const labelStudioContextLeaseId = (value: string): LabelStudioContextLeas
  */
 export const labelStudioFocusCorrelationId = (value: string): LabelStudioFocusCorrelationId =>
   uuid(value, 'correlationId') as LabelStudioFocusCorrelationId
+
+/**
+ * Validate and brand a Host current-page inspection UUID.
+ * @param value - untrusted JSON string.
+ * @returns the validated UUID.
+ */
+export const labelStudioPageInspectionId = (value: string): LabelStudioPageInspectionId =>
+  uuid(value, 'inspectionId') as LabelStudioPageInspectionId
 
 /**
  * Validate and brand a browser navigation sequence.

@@ -47,6 +47,12 @@ npx @deepseek-ai/dsh@0.1.2-alpha.3 plugin --profile web add --workspace-root "$L
 | `contextOpenRetryMs` | `1000` | 租约 open 结果未知或事件 wait 可恢复失败后，浏览器再次尝试前等待的正时长。 |
 | `contextCloseTimeoutMs` | `1000` | 浏览器尽力关闭租约时使用的正期限；最终清理由租约 TTL 保证。 |
 | `recentProjectLimit` | `10` | 每个 DSH Session 保留的最近访问项目数量，必须是 1–100 之间的正安全整数。 |
+| `currentPageTimeoutMs` | `5000` | 单次按需 iframe 页面检查的正安全整数期限。 |
+| `frameProxyHtmlMaxBytes` | `2097152` | iframe 代理注入 Bridge 前允许缓冲的 HTML 解码字节上限。 |
+| `webhookMode` | `optional` | `required` 要求 Webhook 注册成功，`optional` 失败时保留工具和 Bridge，`off` 不注册 route 或 Webhook。 |
+| `webhookPath` | `/api/label-studio/webhook` | DSH WebServer 上接收事件的绝对非根精确路径。 |
+| `webhookMaxBodyBytes` | `1048576` | 单个 Webhook 请求允许读取的最大字节数。 |
+| `managedWebhookTimeoutSeconds` | `5` | Python 模式传给 Label Studio 的 Webhook 投递超时秒数。 |
 
 配置只接受表中字段；未知字段会在插件配置阶段失败，不会被静默忽略。`allowDirectAnnotationUpdate` 会被明确拒绝，因为 controlled-task V1 的模型写入路径只有 prediction 创建。
 
@@ -57,30 +63,35 @@ Bundle patch 会在 DSH 启动前读取 `DSH_LABEL_STUDIO_LAUNCH_MODE` 和 `DSH_
 ## 工具
 
 - `label_studio_status` 读取无需认证的 `/health` 端点，并报告端点及其进程是否由本插件管理。
-- `label_studio_create_project` 创建项目，可同时提供 Label Studio XML 和说明。
-- `label_studio_import_tasks` 向项目导入任务 JSON。
-- `label_studio_create_prediction` 为任务写入 Label Studio prediction result，实现预标注。
-- `label_studio_create_active_prediction` 为当前 Session 的 active task 创建显式 prediction，并只在 REST 成功后通知浏览器回刷该任务。
-- `label_studio_focus_task` 在浏览器确认 URL 后，把当前 Session 的工作台导航到指定项目、任务和可选已保存 annotation。
-- `label_studio_get_active_task` 使用当前 Session 租约读取权威的项目 label config、任务数据、完整已保存 annotation 和 prediction。项目读取返回 HTTP 404 时，插件会在当前 Session 历史中把该项目标为 deleted，把持久页面回退到项目列表，并结束失效的实时租约。只有插件控制的 REST 读取会触发该检查；插件不会观察 iframe 内的任意导航。
+- `label_studio_create_project` 创建项目，并把响应中的项目 id 绑定到调用它的 DSH Session。
+- `label_studio_import_tasks` 使用显式项目、Session binding 或按需当前页面检查导入任务 JSON。
+- `label_studio_create_prediction` 使用显式任务、Session binding 或按需当前页面检查创建 prediction。
+- `label_studio_create_active_prediction` 为 Session 绑定的任务创建显式 prediction；没有任务 binding 时检查一次当前页面，并只在 REST 成功后通知浏览器回刷。
+- `label_studio_focus_task` 验证 project/task 关联，导航当前 Session 工作台，并在浏览器确认 URL 后绑定任务。
+- `label_studio_update_label_config` 只替换所选项目的 `label_config`。
+- `label_studio_get_active_task` 解析并验证 Session 任务，然后读取权威的项目 label config、任务数据、完整已保存 annotation 和 prediction。项目读取返回 HTTP 404 时，插件会把持久页面回退到项目列表并结束失效的实时租约。
 
-模型会以规范 JSON 值获得项目、任务和 prediction 的数值 id。任务导航要求当前 Session 具有实时浏览器租约，分发前清空旧 target，并且只在浏览器应用请求 URL 后成功；该结果不声称 iframe 网络加载已经完成。读取当前任务时，Host REST 客户端只使用租约中的 id 重新获取数据，并拒绝 project、task、annotation 或 prediction 关联不一致的响应。当前任务预标工具不接收 task id：它会验证租约中的 task/project 关联，在 dispatch 前复查租约 generation 和 target revision，把调用方显式提供的 tag-specific `result` 传给 Label Studio，并只在成功响应后发布 `prediction-created`。该工具不会从旧 annotation 推断结果，也不声称 raw label-config XML 能验证所有模态。没有工具会更新已保存 annotation；用户应在 Label Studio 中审阅、接受或修改 prediction。iframe 只负责呈现：创建项目、读取任务和预标注都不依赖跨域 DOM 访问或浏览器自动化。
+模型会以规范 JSON 值获得项目、任务和 prediction 的数值 id。显式 id 优先；`current_page: true` 会请求一次 iframe 检查；省略 id 时复用当前 DSH Session binding，只有 binding 不满足所需资源层级时才检查一次当前页面。业务操作成功后再用 CAS 更新 binding；如果并发操作已经更新 binding，工具保留业务成功结果、返回 `binding-conflict` warning，并且不会重放 Label Studio mutation。所有 binding 感知工具都要求 DSH Session。没有工具会更新已保存 annotation；用户应在 Label Studio 中审阅、接受或修改 prediction。
 
 ## 浏览器行为
 
-浏览器包向 `conversation.session.header.actions` 注册可叠加操作，并在该 Bundle 生效期间提供唯一活动的 `root` occupant。这个根组件保留原 sidebar、conversation、details 和 overlay 四个 slot，并直接渲染工作台，不新增公共 workbench slot。第一次打开前不存在 iframe；关闭后 iframe 仍保留在 hidden、inert 的区域中。工作台标题栏的全屏按钮让 Label Studio 覆盖整个 DSH 页面，再次点击或按 `Esc` 恢复原布局；关闭工作台也会退出全屏。重新加载只替换 iframe，**在新窗口打开**使用同一个配置端点，关闭工作台不会中断对话或停止 Label Studio 服务。
+浏览器包向 `conversation.session.header.actions` 注册可叠加操作，并在该 Bundle 生效期间提供唯一活动的 `root` occupant。这个根组件保留原 sidebar、conversation、details 和 overlay 四个 slot，并直接渲染工作台，不新增公共 workbench slot。工作台默认收起；恢复 Session 页面时可以在 hidden、inert 区域挂载 iframe，但不会自动展开右侧栏。用户显式打开后再关闭时 iframe 继续保留，因此重新打开不会重复加载。工作台标题栏的全屏按钮让 Label Studio 覆盖整个 DSH 页面，再次点击或按 `Esc` 恢复原布局；关闭工作台也会退出全屏。重新加载只替换 iframe，**在新窗口打开**使用同一个配置端点，关闭工作台不会中断对话或停止 Label Studio 服务。
 
 实际检查确认 Label Studio 1.22.0 的登录页不发送 `X-Frame-Options`，也没有强制执行 `frame-ancestors`。如果其他 Label Studio 部署添加了这类限制，就必须允许 DSH Web origin，或改用新窗口入口。
 
 ## 上下文通道
 
-Host 通过 `ctx.connection.rpc.handle()` 注册 `/label-studio`；DSH `0.1.2-alpha.3` 的 Connection 会在插件代码运行前统一应用 Host、Origin、浏览器认证和跨站请求检查。七个端点分别用于打开和关闭租约、预留和发布受控 target、提交持久页面、等待 revision 事件，以及确认 Host focus 请求。Connection 的外层 `RpcResult` 携带内嵌的 Label Studio outcome，其中错误码稳定且信息已经脱敏。这个通道绝不携带样本数据、annotation result、凭据或 Token。
+Host 通过 `ctx.connection.rpc.handle()` 注册 `/label-studio`；DSH `0.1.2-alpha.3` 的 Connection 会在插件代码运行前统一应用 Host、Origin、浏览器认证和跨站请求检查。八个端点分别用于打开和关闭租约、预留和发布受控 target、提交持久页面与一次性检查回执、等待 revision 事件，以及确认 Host focus 请求。Connection 的外层 `RpcResult` 携带内嵌的 Label Studio outcome，其中错误码稳定且信息已经脱敏。这个通道绝不携带样本数据、annotation result、凭据或 Token。
 
 `LabelStudioContextRegistry` 允许每个 DSH Session 持有一个有过期时间的浏览器 source 租约。打开租约和每次等待都会验证实时 `ctx.sessions` 条目或冷态 `ctx.sessionPersistence` 元数据；持久化读取失败或被取消时不会续期。`LabelStudioChangeBroker` 保存有界且按 Session 隔离的 revision 后缀，能够报告回放重置，并支持可取消长轮询和幂等 focus 确认。异步释放插件时，共享操作门会先一起关闭工具和 RPC，再释放 broker、注册表和运行时状态。
 
 `label_studio_context` storage domain 在 DSH Session event log 之外保存当前项目列表、项目或任务页面，以及有界的最近项目元数据。Session id 和创建时间共同防止复用 id 读取旧记录。移除 Bundle 并重启后，它提供的 root、RPC handler、工具、租约和插件运行状态都会消失，但该 domain 会保留；不是由插件启动的 Label Studio 服务会继续运行。重新安装 Bundle 后，每个匹配 Session 会独立恢复。
 
+Webhook 使用随机独立 secret 认证精确 POST route，并通过持久 owner UUID 只清理本插件创建的注册。Label Studio 1.22 Community 使用项目级 Webhook：插件启动时为已有项目分别注册；annotation 创建或更新在没有既有绑定时，会对每个存活的 DSH iframe 发起一次页面检查，仅当唯一 Session 显示完全相同的 project/task 时建立绑定。已有精确绑定保持不变；task 删除把精确 task binding 降级为 project，annotation 删除不推断 task。`optional` 模式启动失败后，现有 `label_studio_status` 工具会在每次调用时通过同一个幂等注册器重试一次。
+
 浏览器会在 React commit 后绑定当前选中的 Session，打开租约并恢复该 Session 的持久页面；手动页面选择与 Host focus 请求共用一个串行队列。它先应用已经确认的 Label Studio task URL，再发布或确认 target；确认结果不确定时分别保留 observed 和 committed 事件游标；Session 或 Connection 更换时取消当前世代的请求。页面栏会显示同步状态和有界的最近项目列表；deleted 项目仍可见但不可选择。`prediction-created` 事件只有在 task id 与 active target 匹配时才让 iframe 回刷一次；回放重置则让当前 target 回刷一次。boot 投影会提供 `eventHistorySize`、`contextOpenRetryMs` 和 `contextCloseTimeoutMs`，但绝不包含凭据或任务内容。
+
+上下文栏还会显示持久 binding、来源、最近一次按需检查结果和可选 Webhook 可用状态。被动浏览 iframe 永远不会更新 binding；只有经过验证且成功的工具操作，或唯一匹配的 annotation Webhook 才会更新。已认证但无法唯一归属 Session 的 Webhook 会显示为“未匹配”，且不修改任何 binding。
 
 ## 模型体验
 
@@ -88,11 +99,11 @@ Host 通过 `ctx.connection.rpc.handle()` 注册 `/label-studio`；DSH `0.1.2-al
 
 #### 模型看到的内容
 
-该插件装配后，生成的[工具目录](../../../docs/tool-catalog.md#deepseek-aidsh-label-studio)中列出的七个工具 schema 和说明会进入模型上下文。工具结果报告端点可用性、稳定的 REST id 与 URL、已确认的任务导航、当前任务 prediction 创建结果，或完整的当前 project/task JSON；认证失败只会指出尚未解析的凭据引用。
+该插件装配后，生成的[工具目录](../../../docs/tool-catalog.md#deepseek-aidsh-label-studio)中列出的八个工具 schema 和说明会进入模型上下文。工具结果报告端点可用性、稳定的 REST id 与 URL、已确认的任务导航、label config 更新、prediction 创建结果，或完整的当前 project/task JSON；认证失败只会指出尚未解析的凭据引用。
 
 #### Token 影响
 
-插件装配期间影响固定：Native Tool 请求包含七个工具 schema；Code Mode 则包含相应的生成 SDK 声明。当前任务结果的大小取决于所选任务，并受 `activeTaskMaxBytes` 限制。
+插件装配期间影响固定：Native Tool 请求包含八个工具 schema；Code Mode 则包含相应的生成 SDK 声明。当前任务结果的大小取决于所选任务，并受 `activeTaskMaxBytes` 限制。
 
 页面选择和恢复不会新增 Session event，也不会改变 `deriveMessages()` 输出。只有模型显式调用工具时，DSH 才会记录普通的工具调用和结果事件。
 
@@ -108,3 +119,4 @@ Host 通过 `ctx.connection.rpc.handle()` 注册 `/label-studio`；DSH `0.1.2-al
 - **浏览器上下文只含标识符** — 同步会发布当前 project、task 和可选 annotation id，但不会发布 task data、已保存 annotation、prediction、凭据或 Token。
 - **登录和数据存储由 Label Studio 负责** — iframe 可能显示其登录页；插件不会修改 Label Studio 数据库、媒体目录、用户管理或本地文件服务配置。
 - **窄屏会挤压两个应用** — 详情栏关闭且工作台达到常规拖动下限后，会话区可能变得很窄；极端宽度下，工作台的渲染宽度也会低于该下限，以确保网格不超出框架。
+- **Label Studio 1.22.0 Community 的 Webhook 范围** — 该版本拒绝 `project: null` 的组织级注册，因此插件为启动时已经存在的项目创建项目级 Webhook。插件运行期间若仅在 Label Studio 页面手动新建项目，该项目需在下次插件启动后才会纳入 Webhook；模型工具仍会在成功操作后直接建立 Session 绑定。

@@ -10,15 +10,20 @@ export interface LabelStudioPanelSnapshot {
 }
 /** Owns one browser page's workbench visibility and iframe identity. */
 export declare class LabelStudioPanelController {
-    private readonly baseUrl;
+    private readonly frameBaseUrl;
+    private readonly externalBaseUrl;
     /** Observable browser-local panel state. */
     readonly store: SnapshotStore<LabelStudioPanelSnapshot>;
     private readonly pending;
-    /** @param baseUrl - Host-validated neutral Label Studio page. */
-    constructor(baseUrl: string);
+    private frameWindow;
     /**
-     * Set workbench visibility while permanently latching the first mount.
-     * @param open - requested visibility; the first open permanently latches mounted.
+     * @param frameBaseUrl - isolated proxy endpoint used by the iframe.
+     * @param externalBaseUrl - direct Label Studio endpoint used outside DSH.
+     */
+    constructor(frameBaseUrl: string, externalBaseUrl?: string);
+    /**
+     * Set workbench visibility while retaining any mounted iframe.
+     * @param open - requested visibility; opening permanently latches mounted.
      */
     setOpen(open: boolean): void;
     /** Hide the workbench without unmounting a previously created iframe. */
@@ -26,7 +31,7 @@ export declare class LabelStudioPanelController {
     /** Replace the iframe element while retaining visibility state. */
     reload(): void;
     /**
-     * Stage a controlled page URL and wait until React commits the matching iframe src.
+     * Mount if needed, stage a controlled page URL, and wait for the matching iframe src.
      * @param page - structured Label Studio page.
      * @returns promise resolved by {@link confirmApplied}.
      */
@@ -40,6 +45,10 @@ export declare class LabelStudioPanelController {
     clearPage(): void;
     /** Reload only a currently controlled page. */
     reloadPage(): void;
+    /** Record the currently mounted iframe window for one-shot inspection. */
+    attachFrame(frame: HTMLIFrameElement | null): void;
+    /** Return the currently mounted iframe window without querying the DOM. */
+    currentFrameWindow(): WindowProxy | undefined;
     /** Open the controlled target, or the neutral endpoint, outside the dock. */
     openExternal(): void;
     /** Reject outstanding DOM confirmations during plugin teardown. */

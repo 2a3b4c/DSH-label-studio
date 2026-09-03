@@ -26,17 +26,27 @@ describe('Label Studio browser boot config', () => {
       '<html><body><div id="root"></div><script type="module"></script></body></html>',
       {
         baseUrl: config.baseUrl,
+        frameBaseUrl: 'http://127.0.0.1:41000',
+        frameCapability: 'ephemeral-capability',
+        inspectionProtocol: 'dsh-label-studio-page/v1',
+        currentPageTimeoutMs: config.currentPageTimeoutMs,
         contextOpenRetryMs: config.contextOpenRetryMs,
         contextCloseTimeoutMs: config.contextCloseTimeoutMs,
         eventHistorySize: config.eventHistorySize,
+        webhookStatus: 'ready',
       },
     )
     expect(html.indexOf('__DSH_LABEL_STUDIO__')).toBeLessThan(html.indexOf('<div id="root">'))
     expect(readBootConfig(html)).toEqual({
       baseUrl: 'http://localhost:9090',
+      frameBaseUrl: 'http://127.0.0.1:41000',
+      frameCapability: 'ephemeral-capability',
+      inspectionProtocol: 'dsh-label-studio-page/v1',
+      currentPageTimeoutMs: 5000,
       contextOpenRetryMs: 1000,
       contextCloseTimeoutMs: 1000,
       eventHistorySize: 64,
+      webhookStatus: 'ready',
     })
     expect(html).not.toContain('TRAINING_LABEL_STUDIO_PAT')
     expect(html).not.toContain('restResponseMaxBytes')
@@ -49,7 +59,10 @@ describe('Label Studio browser boot config', () => {
 
   it('escapes HTML-significant endpoint text defensively', () => {
     const html = injectLabelStudioBootConfig('<main />', {
-      baseUrl: 'http://localhost:8080/<script>', contextOpenRetryMs: 1, contextCloseTimeoutMs: 1, eventHistorySize: 1,
+      baseUrl: 'http://localhost:8080/<script>', frameBaseUrl: 'http://127.0.0.1:41000',
+      frameCapability: 'safe', inspectionProtocol: 'dsh-label-studio-page/v1', currentPageTimeoutMs: 1,
+      contextOpenRetryMs: 1, contextCloseTimeoutMs: 1, eventHistorySize: 1,
+      webhookStatus: 'disabled',
     })
     expect(html).not.toContain('localhost:8080/<script>')
     expect(html).toContain('localhost:8080/\\u003cscript>')

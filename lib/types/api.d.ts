@@ -2,6 +2,8 @@
 import type { CredentialProvider, CredentialRef } from '@deepseek-ai/dsh-credentials';
 import type { JsonValue } from '@deepseek-ai/dsh-util-values';
 import type { LabelStudioActiveTarget, LabelStudioAnnotationId, LabelStudioPredictionId, LabelStudioProjectId, LabelStudioTaskId } from '@deepseek-ai/dsh-label-studio-protocol';
+import type { CreateWebhookInput } from './webhook-registration.ts';
+import { type LabelStudioWebhookEvent } from './webhook-payload.ts';
 type Fetch = typeof globalThis.fetch;
 /** Project fields accepted by the project-creation operation. */
 export interface CreateProjectInput {
@@ -11,7 +13,7 @@ export interface CreateProjectInput {
 }
 /** Stable project identity returned to tools. */
 export interface CreatedProject {
-    id: number;
+    id: LabelStudioProjectId;
     title: string;
 }
 /** One Label Studio task document. */
@@ -34,8 +36,13 @@ export interface CreatePredictionInput {
 /** Stable prediction identity returned to tools. */
 export interface CreatedPrediction {
     id: number;
-    taskId: number;
+    taskId: LabelStudioTaskId;
     modelVersion?: string;
+}
+/** Verified project fields returned after updating its labeling interface. */
+export interface UpdatedProjectLabelConfig {
+    readonly id: LabelStudioProjectId;
+    readonly labelConfig: string;
 }
 /** A dispatched Label Studio mutation whose external commit cannot be determined from its response. */
 export declare class LabelStudioMutationOutcomeUnknownError extends Error {
@@ -47,7 +54,7 @@ export declare class LabelStudioMutationOutcomeUnknownError extends Error {
 }
 /** Sanitized non-success response from one Label Studio HTTP operation. */
 export declare class LabelStudioHttpError extends Error {
-    readonly method: 'GET' | 'POST';
+    readonly method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
     readonly path: string;
     readonly status: number;
     /**
@@ -55,7 +62,7 @@ export declare class LabelStudioHttpError extends Error {
      * @param path - fixed REST path without credentials or response content.
      * @param status - HTTP response status.
      */
-    constructor(method: 'GET' | 'POST', path: string, status: number);
+    constructor(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, status: number);
 }
 /** Complete annotation fields required by the active-task model view. */
 export interface LabelStudioAnnotationView {
@@ -92,6 +99,13 @@ export interface LabelStudioProjectView {
 export interface LabelStudioSelectedTaskView {
     project: LabelStudioProjectView;
     task: LabelStudioTaskView;
+}
+/** Webhook identity and plugin-owner header returned by Label Studio. */
+export interface LabelStudioWebhookRegistration {
+    readonly id: number;
+    readonly projectId: LabelStudioProjectId;
+    readonly url: string;
+    readonly ownerId?: string;
 }
 /** REST client that resolves and exchanges its PAT refresh credential once per operation. */
 export declare class LabelStudioApi {
@@ -131,6 +145,14 @@ export declare class LabelStudioApi {
      */
     createPrediction(input: CreatePredictionInput, signal?: AbortSignal): Promise<CreatedPrediction>;
     /**
+     * Replace one project's Label Studio labeling-interface XML.
+     * @param projectId - verified target project.
+     * @param labelConfig - complete Label Studio labeling-interface XML.
+     * @param signal - optional caller cancellation.
+     * @returns response fields proven to match the requested update.
+     */
+    updateProjectLabelConfig(projectId: LabelStudioProjectId, labelConfig: string, signal?: AbortSignal): Promise<UpdatedProjectLabelConfig>;
+    /**
      * Read the project fields needed to interpret task annotations and predictions.
      * @param projectId - validated Label Studio project id.
      * @param signal - optional caller cancellation.
@@ -144,9 +166,21 @@ export declare class LabelStudioApi {
      * @returns authoritative task data and result arrays.
      */
     getTask(taskId: LabelStudioTaskId, signal?: AbortSignal): Promise<LabelStudioTaskView>;
+    /** List every project id visible to the authenticated Label Studio user. */
+    listProjectIds(signal?: AbortSignal): Promise<readonly LabelStudioProjectId[]>;
+    /** Create one explicitly configured project Webhook. */
+    createWebhook(input: CreateWebhookInput, signal?: AbortSignal): Promise<LabelStudioWebhookRegistration>;
+    /** List action names supported by this Label Studio deployment. */
+    listWebhookActions(signal?: AbortSignal): Promise<ReadonlySet<LabelStudioWebhookEvent['action']>>;
+    /** List Webhooks and reduce each record to id, URL, and plugin owner header. */
+    listWebhooks(signal?: AbortSignal): Promise<readonly LabelStudioWebhookRegistration[]>;
+    /** Delete one exact Webhook registration. */
+    deleteWebhook(webhookId: number, signal?: AbortSignal): Promise<void>;
     private request;
     private exchangeAccessToken;
     private fetchJsonObject;
+    private fetchJsonValue;
+    private resolveRefreshCredential;
 }
 /**
  * Verify that REST project, task, annotation, and prediction ids match the live browser target.

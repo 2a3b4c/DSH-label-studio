@@ -3,6 +3,9 @@
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type {
+  LabelStudioBindingSnapshot,
+  LabelStudioBindingSource,
+  LabelStudioBindingTarget,
   LabelStudioContextLeaseId,
   LabelStudioPageContext,
   LabelStudioSessionContextSnapshot,
@@ -53,6 +56,24 @@ export interface LabelStudioSessionIdentity {
   readonly createdAt: number
 }
 
+/** Compare-and-set request for one Session binding. */
+export type LabelStudioBindingCommit = { readonly expectedRevision: number } & (
+  | { readonly target?: never; readonly source?: never }
+  | { readonly target: LabelStudioBindingTarget; readonly source: LabelStudioBindingSource }
+)
+
+/** Before-and-after binding projection produced by deletion reconciliation. */
+export interface LabelStudioSessionBindingChange {
+  readonly sessionId: SessionId
+  readonly before: LabelStudioBindingSnapshot
+  readonly after: LabelStudioBindingSnapshot
+}
+
+/** Singleton UUID used to reconcile Webhooks created by this plugin. */
+export interface LabelStudioWebhookOwnerRecord {
+  readonly ownerId: string
+}
+
 /** Request identity retained to return an exact lost-response retry. */
 export interface LabelStudioPageCommitReceipt {
   readonly leaseId: LabelStudioContextLeaseId
@@ -64,17 +85,86 @@ export interface LabelStudioPageCommitReceipt {
 }
 
 /** Complete durable state stored for one DSH Session lifecycle. */
-export interface LabelStudioSessionContextRecord extends LabelStudioSessionContextSnapshot {
+export interface LabelStudioSessionContextRecord {
   readonly sessionCreatedAt: number
+  readonly page: LabelStudioPageContext
+  readonly recentProjects: LabelStudioSessionContextSnapshot['recentProjects']
+  readonly revision: number
+  readonly binding?: LabelStudioBindingSnapshot
   readonly lastCommit?: LabelStudioPageCommitReceipt
 }
 
-const recentProjectSchema = z.strictObject({
+const recentProjectInputSchema = z.strictObject({
   projectId: projectIdSchema,
   lastTaskId: taskIdSchema.optional(),
   lastVisitedAt: nonNegativeSafeInteger,
   availability: z.enum(['available', 'deleted']),
 })
+
+const recentProjectSchema = recentProjectInputSchema.transform((recent) => ({
+  projectId: recent.projectId,
+  ...(recent.lastTaskId === undefined ? {} : { lastTaskId: recent.lastTaskId }),
+  lastVisitedAt: recent.lastVisitedAt,
+  availability: recent.availability,
+}))
+
+const bindingTargetInputSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('project'), projectId: projectIdSchema }),
+  z.strictObject({
+    kind: z.literal('task'),
+    projectId: projectIdSchema,
+    taskId: taskIdSchema,
+    annotationId: annotationIdSchema.optional(),
+  }),
+])
+
+const bindingTargetSchema: z.ZodType<LabelStudioBindingTarget> =
+  bindingTargetInputSchema.transform((target): LabelStudioBindingTarget => {
+    if (target.kind === 'project') return target
+    return {
+      kind: 'task',
+      projectId: target.projectId,
+      taskId: target.taskId,
+      ...(target.annotationId === undefined ? {} : { annotationId: target.annotationId }),
+    }
+  })
+
+const bindingSourceSchema: z.ZodType<LabelStudioBindingSource> = z.enum([
+  'tool-result',
+  'webhook',
+  'current-page',
+])
+
+const emptyBindingSchema = z.strictObject({
+  recentProjects: z.array(recentProjectSchema),
+  revision: nonNegativeSafeInteger,
+})
+
+const boundBindingSchema = z.strictObject({
+  target: bindingTargetSchema,
+  source: bindingSourceSchema,
+  boundAt: nonNegativeSafeInteger,
+  recentProjects: z.array(recentProjectSchema),
+  revision: nonNegativeSafeInteger,
+})
+
+/** Validates a complete empty or bound Session binding snapshot. */
+export const labelStudioBindingSnapshotSchema: z.ZodType<LabelStudioBindingSnapshot> =
+  z.union([emptyBindingSchema, boundBindingSchema]).transform((binding): LabelStudioBindingSnapshot => {
+    const recentProjects = binding.recentProjects.map(recent => ({ ...recent }))
+    if (!('target' in binding)) return { recentProjects, revision: binding.revision }
+    return {
+      target: binding.target,
+      source: binding.source,
+      boundAt: binding.boundAt,
+      recentProjects,
+      revision: binding.revision,
+    }
+  })
+
+/** Validates the singleton Webhook owner record. */
+export const labelStudioWebhookOwnerRecordSchema: z.ZodType<LabelStudioWebhookOwnerRecord> =
+  z.strictObject({ ownerId: z.string().uuid() })
 
 const pageCommitReceiptSchema: z.ZodType<LabelStudioPageCommitReceipt> = z.strictObject({
   leaseId: leaseIdSchema,
@@ -90,6 +180,7 @@ const sessionContextRecordInputSchema = z.strictObject({
   page: labelStudioPageContextSchema,
   recentProjects: z.array(recentProjectSchema),
   revision: nonNegativeSafeInteger,
+  binding: labelStudioBindingSnapshotSchema.optional(),
   lastCommit: pageCommitReceiptSchema.optional(),
 })
 
@@ -105,6 +196,7 @@ export const labelStudioSessionContextRecordSchema: z.ZodType<LabelStudioSession
       availability: recent.availability,
     })),
     revision: record.revision,
+    binding: record.binding ?? { recentProjects: [], revision: 0 },
     ...(record.lastCommit === undefined ? {} : { lastCommit: record.lastCommit }),
   }))
 
@@ -115,6 +207,9 @@ export const labelStudioSessionContextDomainSpec = defineDomain({
   tables: {
     sessions: domainTable<SessionId, LabelStudioSessionContextRecord>(
       labelStudioSessionContextRecordSchema,
+    ),
+    webhook_owners: domainTable<'owner', LabelStudioWebhookOwnerRecord>(
+      labelStudioWebhookOwnerRecordSchema,
     ),
   },
 })

@@ -21,6 +21,7 @@ function context(page: LabelStudioPageContext, revision: number): LabelStudioSes
       availability: 'available',
     }],
     revision,
+    binding: { recentProjects: [], revision: 0 },
   }
 }
 
@@ -86,6 +87,49 @@ describe('Label Studio Session page context', () => {
     controller.bindSession('a' as never)
     await vi.waitFor(() => { expect(page.applyPage).toHaveBeenLastCalledWith(project.page) })
     expect(controller.store.getSnapshot()).toMatchObject({ sessionContext: project })
+  })
+
+  it('restores a Webhook task binding when the older durable page is still the project list', async () => {
+    const stored = {
+      ...context({ view: 'projects' }, 0),
+      binding: {
+        target: {
+          kind: 'task' as const,
+          projectId: 236 as never,
+          taskId: 487 as never,
+          annotationId: 67 as never,
+        },
+        source: 'webhook' as const,
+        boundAt: 10,
+        recentProjects: [],
+        revision: 1,
+      },
+    }
+    const { controller, page } = harness({ a: stored })
+
+    controller.bindSession('a' as never)
+
+    await vi.waitFor(() => {
+      expect(page.applyPage).toHaveBeenLastCalledWith({
+        view: 'task', projectId: 236, taskId: 487, annotationId: 67,
+      })
+    })
+  })
+
+  it('does not mutate a binding when the iframe location changes without an inspection event', async () => {
+    const stored = {
+      ...context({ view: 'project', projectId: 11 as never }, 3),
+      binding: {
+        target: { kind: 'project' as const, projectId: 11 as never },
+        source: 'tool-result' as const, boundAt: 3, recentProjects: [], revision: 1,
+      },
+    }
+    const { controller } = harness({ a: stored })
+    controller.bindSession('a' as never)
+    await vi.waitFor(() => { expect(controller.store.getSnapshot().sessionContextStatus).toBe('ready') })
+    window.history.pushState({}, '', '/projects/99/data?task=999')
+    await Promise.resolve()
+    expect(controller.store.getSnapshot().sessionContext.binding).toEqual(stored.binding)
   })
 
   it('commits task selection in reserve, apply, publish, commit order', async () => {

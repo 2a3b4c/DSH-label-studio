@@ -75,3 +75,11 @@ test('host artifact exposes only Python and external launch modes', async () => 
   assert.match(patch, /launchMode: !!js process\.env\.DSH_LABEL_STUDIO_LAUNCH_MODE \?\? 'python'/)
   assert.match(patch, /pythonExecutable: !!js process\.env\.DSH_LABEL_STUDIO_PYTHON_EXECUTABLE \?\? 'python'/)
 })
+
+test('host artifact contains Session target resolution and label-config update tools', async () => {
+  const host = await read('lib/index.js')
+  assert.match(host, /LabelStudioOperationContextResolver/)
+  assert.match(host, /label_studio_update_label_config/)
+  assert.match(host, /binding-conflict/)
+  assert.match(host, /current_page/)
+})

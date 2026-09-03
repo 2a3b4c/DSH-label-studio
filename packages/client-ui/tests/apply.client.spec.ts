@@ -65,9 +65,14 @@ function bench() {
   }
   window.__DSH_LABEL_STUDIO__ = {
     baseUrl: 'http://127.0.0.1:9090',
+    frameBaseUrl: 'http://127.0.0.1:41000',
+    frameCapability: 'test-capability',
+    inspectionProtocol: 'dsh-label-studio-page/v1',
+    currentPageTimeoutMs: 5_000,
     contextOpenRetryMs: 1_000,
     contextCloseTimeoutMs: 1_000,
     eventHistorySize: 256,
+    webhookStatus: 'ready',
   }
   apply(ctx as never)
   return {
@@ -119,6 +124,17 @@ describe('Label Studio browser assembly', () => {
     rootFace.close()
     expect(rootFace.hooks.labelStudioPanel.getSnapshot().open).toBe(false)
     expect(actions.closeWorkbench).toHaveBeenCalledOnce()
+    await b.dispose()
+  })
+
+  it('seeds the Client context with the Host Webhook availability', async () => {
+    const b = bench()
+    const root = b.slots.entries('root')[0]!
+    const rootFace = root.inject!({
+      setSidebar: vi.fn(), setDetails: vi.fn(), setWorkbench: vi.fn(), toggleSidebar: vi.fn(), setNarrow: vi.fn(),
+      openDetails: vi.fn(), closeDetails: vi.fn(), openWorkbench: vi.fn(), closeWorkbench: vi.fn(),
+    } as never) as { hooks: { labelStudioContext: { getSnapshot: () => { webhookStatus: string } } } }
+    expect(rootFace.hooks.labelStudioContext.getSnapshot().webhookStatus).toBe('ready')
     await b.dispose()
   })
 })

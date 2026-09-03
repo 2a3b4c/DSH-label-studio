@@ -57,7 +57,11 @@ export class LabelStudioOperationGate {
 export interface LabelStudioShutdownResources {
   readonly operations: LabelStudioOperationGate
   readonly disposeTools: () => void
+  readonly disposeWebhookIngress?: () => void
   readonly disposeBrowser?: () => Promise<void>
+  readonly disposeWebhookRegistration?: () => Promise<void>
+  readonly disposeCurrentPages?: () => void
+  readonly disposeFrameProxy?: () => Promise<void>
   readonly disposeBroker: () => Promise<void>
   readonly disposeRegistry: () => void
   readonly disposeRuntime: () => Promise<void>
@@ -70,14 +74,26 @@ export interface LabelStudioShutdownResources {
  */
 export async function disposeLabelStudioResources(resources: LabelStudioShutdownResources): Promise<void> {
   resources.operations.beginClose()
-  resources.disposeTools()
-  await resources.disposeBrowser?.()
-  await resources.operations.drain()
-  await resources.disposeBroker()
-  resources.disposeRegistry()
-  try {
-    await resources.disposeRuntime()
-  } finally {
-    await resources.disposeStore()
-  }
+  const errors: unknown[] = []
+  attemptSync(() => resources.disposeTools(), errors)
+  attemptSync(() => resources.disposeWebhookIngress?.(), errors)
+  await attempt(() => resources.disposeBrowser?.(), errors)
+  await attempt(() => resources.disposeWebhookRegistration?.(), errors)
+  await attempt(() => resources.operations.drain(), errors)
+  attemptSync(() => resources.disposeCurrentPages?.(), errors)
+  await attempt(() => resources.disposeFrameProxy?.(), errors)
+  await attempt(() => resources.disposeBroker(), errors)
+  attemptSync(() => resources.disposeRegistry(), errors)
+  await attempt(() => resources.disposeRuntime(), errors)
+  await attempt(() => resources.disposeStore(), errors)
+  if (errors.length === 1) throw errors[0]
+  if (errors.length > 1) throw new AggregateError(errors, 'label-studio: resource shutdown failed')
+}
+
+async function attempt(operation: () => void | Promise<void> | undefined, errors: unknown[]): Promise<void> {
+  try { await operation() } catch (error) { errors.push(error) }
+}
+
+function attemptSync(operation: () => void | undefined, errors: unknown[]): void {
+  try { operation() } catch (error) { errors.push(error) }
 }

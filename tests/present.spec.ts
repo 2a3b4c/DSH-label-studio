@@ -4,6 +4,7 @@ import {
   presentActiveTaskMeta,
   presentCreateActivePredictionCall,
   presentFocusTaskCall,
+  presentUpdateLabelConfigCall,
 } from '../src/present.ts'
 import {
   labelStudioAnnotationId,
@@ -67,5 +68,18 @@ describe('active-prediction presentation', () => {
       kind: 'execute',
       locations: [],
     })
+  })
+})
+
+describe('label-config presentation', () => {
+  it('uses only the optional project id and never copies XML into the card', () => {
+    const card = presentUpdateLabelConfigCall({
+      project_id: 7,
+      label_config: '<View>SECRET_CONFIG</View>',
+    })
+    expect(card).toEqual({
+      card: 'generic', title: 'Update Label Studio project 7 label config', kind: 'execute', locations: [],
+    })
+    expect(JSON.stringify(card)).not.toContain('SECRET_CONFIG')
   })
 })

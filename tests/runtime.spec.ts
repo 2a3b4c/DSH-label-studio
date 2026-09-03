@@ -48,6 +48,8 @@ describe('LabelStudioRuntime', () => {
       baseUrl: 'http://127.0.0.1:8080',
       managed: false,
     })
+    await runtime.dispose()
+    expect(spawn).not.toHaveBeenCalled()
   })
 
   it('starts Label Studio through the configured Python and owns its process', async () => {
@@ -67,10 +69,13 @@ describe('LabelStudioRuntime', () => {
     expect(spawn).toHaveBeenCalledWith(expect.objectContaining({
       argv: [
         '/usr/local/bin/python', '-m', 'label_studio.server', 'start',
-        '--no-browser', '--port', '8080', '--host', 'http://127.0.0.1:8080',
+        '--no-browser', '--port', '8080', '--internal-host', '127.0.0.1',
       ],
       cwd: process.cwd(),
       graceMs: 5_000,
+      env: {
+        WEBHOOK_TIMEOUT: '5',
+      },
     }))
     expect((await runtime.status()).managed).toBe(true)
 
@@ -106,7 +111,7 @@ describe('LabelStudioRuntime', () => {
     expect(spawn).toHaveBeenCalledWith(expect.objectContaining({
       argv: [
         'C:\\Python313\\python.exe', '-m', 'label_studio.server', 'start', '--no-browser',
-        '--port', '8080', '--host', 'http://127.0.0.1:8080',
+        '--port', '8080', '--internal-host', '127.0.0.1',
       ],
     }))
   })

@@ -1,8 +1,8 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useLayoutEffect, useState } from 'react';
 import css from './LabelStudioPanel.module.css';
-/** Render the iframe only after first open and retain it while hidden. */
-export function LabelStudioPanel({ useLabelStudioPanel, useLabelStudioContext, baseUrl, open, width, close, reload, openExternal, confirmApplied, selectTarget, selectPage, t, }) {
+/** Render a restored or explicitly opened iframe and retain it while hidden. */
+export function LabelStudioPanel({ useLabelStudioPanel, useLabelStudioContext, baseUrl, open, width, close, reload, openExternal, confirmApplied, attachFrame, selectTarget, selectPage, t, }) {
     const state = useLabelStudioPanel(snapshot => snapshot);
     const context = useLabelStudioContext(snapshot => snapshot);
     const [projectId, setProjectId] = useState('');
@@ -10,6 +10,9 @@ export function LabelStudioPanel({ useLabelStudioPanel, useLabelStudioContext, b
     const [annotationId, setAnnotationId] = useState('');
     const [inputError, setInputError] = useState();
     const [fullscreen, setFullscreen] = useState(false);
+    const recentProjects = context.sessionContext.binding.recentProjects.length > 0
+        ? context.sessionContext.binding.recentProjects
+        : context.sessionContext.recentProjects;
     useEffect(() => {
         if (!open && fullscreen)
             setFullscreen(false);
@@ -37,11 +40,11 @@ export function LabelStudioPanel({ useLabelStudioPanel, useLabelStudioContext, b
                     setInputError(undefined);
                     void selectTarget({ projectId, taskId, ...(annotationId === '' ? {} : { annotationId }) })
                         .catch((error) => { setInputError(error instanceof Error ? error.message : String(error)); });
-                }, children: [_jsx("input", { "aria-label": t('panel.projectId'), value: projectId, onChange: (event) => { setProjectId(event.currentTarget.value); } }), _jsx("input", { "aria-label": t('panel.taskId'), value: taskId, onChange: (event) => { setTaskId(event.currentTarget.value); } }), _jsx("input", { "aria-label": t('panel.annotationId'), value: annotationId, onChange: (event) => { setAnnotationId(event.currentTarget.value); } }), _jsx("button", { type: "submit", children: t('panel.navigate') }), _jsx("output", { "aria-live": "polite", children: inputError ?? context.error ?? t(`status.${context.status}`) })] }), _jsxs("div", { className: css.contextBar, children: [_jsxs("div", { className: css.currentPage, children: [t('panel.currentPage'), ": ", pageName(context.sessionContext.page, t)] }), context.sessionContext.recentProjects.length > 0 && _jsx("nav", { className: css.recentProjects, "aria-label": t('panel.recentProjects'), children: context.sessionContext.recentProjects.map((project) => {
+                }, children: [_jsx("input", { "aria-label": t('panel.projectId'), value: projectId, onChange: (event) => { setProjectId(event.currentTarget.value); } }), _jsx("input", { "aria-label": t('panel.taskId'), value: taskId, onChange: (event) => { setTaskId(event.currentTarget.value); } }), _jsx("input", { "aria-label": t('panel.annotationId'), value: annotationId, onChange: (event) => { setAnnotationId(event.currentTarget.value); } }), _jsx("button", { type: "submit", children: t('panel.navigate') }), _jsx("output", { "aria-live": "polite", children: inputError ?? context.error ?? t(`status.${context.status}`) })] }), _jsxs("div", { className: css.contextBar, children: [_jsxs("div", { className: css.currentPage, children: [t('panel.currentPage'), ": ", pageName(context.sessionContext.page, t)] }), _jsxs("div", { className: css.currentPage, children: [t('panel.binding'), ": ", bindingName(context.sessionContext.binding.target, t)] }), context.sessionContext.binding.source !== undefined && _jsxs("div", { className: css.currentPage, children: [t('panel.bindingSource'), ": ", t(`panel.source.${context.sessionContext.binding.source}`)] }), _jsxs("div", { className: css.contextFacts, children: [_jsxs("span", { className: css.statusBadge, children: [t('panel.inspection'), ": ", t(`panel.inspection.${context.inspectionStatus}`)] }), _jsxs("span", { className: css.statusBadge, children: [t('panel.webhook'), ": ", t(`panel.webhook.${context.webhookStatus}`), context.webhookUnassigned ? ` · ${t('panel.webhook.unassigned')}` : ''] })] }), recentProjects.length > 0 && _jsx("nav", { className: css.recentProjects, "aria-label": t('panel.recentProjects'), children: recentProjects.map((project) => {
                             const deleted = project.availability === 'deleted';
                             const label = `${t('panel.project')} ${String(project.projectId)}${deleted ? ` (${t('panel.deleted')})` : ''}`;
                             return _jsx("button", { type: "button", disabled: deleted, "aria-label": label, onClick: () => { void selectPage({ view: 'project', projectId: project.projectId }); }, children: label }, project.projectId);
-                        }) }), _jsx("p", { className: css.bridgeLimitation, children: t('panel.bridgeLimitation') })] }), _jsx("iframe", { className: css.iframe, src: state.targetUrl ?? baseUrl, title: t('panel.title'), allow: "clipboard-read; clipboard-write" }, state.reloadRevision)] }));
+                        }) }), _jsx("p", { className: css.bridgeLimitation, children: t('panel.bridgeLimitation') })] }), _jsx("iframe", { ref: attachFrame, className: css.iframe, src: state.targetUrl ?? baseUrl, title: t('panel.title'), allow: "clipboard-read; clipboard-write" }, state.reloadRevision)] }));
 }
 function pageName(page, t) {
     if (page.view === 'projects')
@@ -50,5 +53,15 @@ function pageName(page, t) {
         return `${t('panel.project')} ${String(page.projectId)}`;
     const annotation = page.annotationId === undefined ? '' : ` / ${t('panel.annotationId')} ${String(page.annotationId)}`;
     return `${t('panel.project')} ${String(page.projectId)} / ${t('panel.taskId')} ${String(page.taskId)}${annotation}`;
+}
+function bindingName(target, t) {
+    if (target === undefined)
+        return t('panel.unbound');
+    if (target.kind === 'project')
+        return `${t('panel.project')} ${String(target.projectId)}`;
+    const annotation = target.annotationId === undefined
+        ? ''
+        : ` / ${t('panel.annotationId')} ${String(target.annotationId)}`;
+    return `${t('panel.project')} ${String(target.projectId)} / ${t('panel.taskId')} ${String(target.taskId)}${annotation}`;
 }
 //# sourceMappingURL=LabelStudioPanel.js.map

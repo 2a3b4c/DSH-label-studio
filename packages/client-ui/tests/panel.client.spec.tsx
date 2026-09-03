@@ -9,9 +9,20 @@ const t = (key: string) => ({
   'panel.title': 'Label Studio 标注工作台', 'panel.reload': '重新加载',
   'panel.fullscreen': '全屏标注', 'panel.exitFullscreen': '退出全屏',
   'panel.external': '在新窗口打开', 'panel.close': '关闭工作台',
+  'panel.projectId': '项目 ID', 'panel.taskId': '任务 ID',
+  'panel.annotationId': '标注 ID（可选）', 'panel.navigate': '定位',
   'panel.currentPage': '当前位置', 'panel.projects': '项目列表',
   'panel.recentProjects': '最近项目', 'panel.project': '项目',
   'panel.deleted': '已删除',
+  'panel.binding': '当前绑定', 'panel.unbound': '未绑定',
+  'panel.bindingSource': '绑定来源', 'panel.source.tool-result': '工具结果',
+  'panel.source.webhook': 'Webhook', 'panel.source.current-page': '按需检查',
+  'panel.inspection': '页面检查', 'panel.inspection.idle': '未请求',
+  'panel.inspection.inspecting': '检查中', 'panel.inspection.ready': '已就绪',
+  'panel.inspection.timeout': '已超时', 'panel.inspection.unsupported': '页面不支持',
+  'panel.inspection.unavailable': '不可用', 'panel.webhook': 'Webhook',
+  'panel.webhook.disabled': '已关闭', 'panel.webhook.ready': '已就绪',
+  'panel.webhook.unavailable': '不可用', 'panel.webhook.unassigned': '事件未匹配当前会话',
   'panel.bridgeLimitation': '仅同步插件控制的导航，无法观察页面内任意点击或未保存草稿。',
 }[key] ?? key)
 
@@ -22,11 +33,20 @@ const sessionContext = {
     { projectId: 486 as never, lastVisitedAt: 1, availability: 'deleted' as const },
   ],
   revision: 2,
+  binding: { recentProjects: [], revision: 0 },
+}
+
+const contextSnapshot = {
+  sourceId: 'source' as never, navigationSequence: 0 as never, targetRevision: 0,
+  eventRevision: 0, observedEventRevision: 0, bufferedEventCount: 0, status: 'no-session' as const,
+  sessionContext, sessionContextStatus: 'ready' as const,
+  inspectionStatus: 'idle' as const, webhookStatus: 'ready' as const, webhookUnassigned: false,
 }
 
 function mount(
   controller: LabelStudioPanelController,
   close = vi.fn(), reload = vi.fn(), openExternal = vi.fn(), selectPage = vi.fn(),
+  context = contextSnapshot,
 ) {
   const useLabelStudioPanel = <T,>(selector: (value: ReturnType<typeof controller.store.getSnapshot>) => T): T =>
     selector(useSyncExternalStore(
@@ -37,11 +57,7 @@ function mount(
     close, reload, openExternal, selectPage, useLabelStudioPanel,
     ...render(<LabelStudioPanel
       useLabelStudioPanel={useLabelStudioPanel as never}
-      useLabelStudioContext={selector => selector({
-        sourceId: 'source' as never, navigationSequence: 0 as never, targetRevision: 0,
-        eventRevision: 0, observedEventRevision: 0, bufferedEventCount: 0, status: 'no-session',
-        sessionContext, sessionContextStatus: 'ready',
-      })}
+      useLabelStudioContext={selector => selector(context)}
       baseUrl="http://127.0.0.1:8080"
       open={controller.store.getSnapshot().open}
       width={720}
@@ -49,6 +65,7 @@ function mount(
       reload={reload}
       openExternal={openExternal}
       confirmApplied={(revision) => { controller.confirmApplied(revision) }}
+      attachFrame={(frame) => { controller.attachFrame(frame) }}
       selectTarget={vi.fn()}
       selectPage={selectPage}
       t={t}
@@ -74,13 +91,10 @@ describe('Label Studio keep-alive panel', () => {
     view.rerender(<LabelStudioPanel
       baseUrl="http://127.0.0.1:8080"
       useLabelStudioPanel={view.useLabelStudioPanel}
-      useLabelStudioContext={selector => selector({
-        sourceId: 'source' as never, navigationSequence: 0 as never, targetRevision: 0,
-        eventRevision: 0, observedEventRevision: 0, bufferedEventCount: 0, status: 'no-session',
-        sessionContext, sessionContextStatus: 'ready',
-      })}
+      useLabelStudioContext={selector => selector(contextSnapshot)}
       open={false} width={0} close={view.close} reload={view.reload} openExternal={view.openExternal} t={t}
       confirmApplied={(revision) => { controller.confirmApplied(revision) }} selectTarget={vi.fn()}
+      attachFrame={(frame) => { controller.attachFrame(frame) }}
       selectPage={view.selectPage}
     />)
     const section = view.container.querySelector('section')
@@ -127,6 +141,41 @@ describe('Label Studio keep-alive panel', () => {
     expect(view.selectPage).toHaveBeenCalledWith({ view: 'project', projectId: 228 })
     expect(deleted.disabled).toBe(true)
     expect(view.getByText('仅同步插件控制的导航，无法观察页面内任意点击或未保存草稿。')).toBeTruthy()
+  })
+
+  it('shows an unbound Session and ready integration statuses', () => {
+    const controller = new LabelStudioPanelController('http://127.0.0.1:8080'); controller.setOpen(true)
+    const view = mount(controller)
+    expect(view.getByText('当前绑定: 未绑定')).toBeTruthy()
+    expect(view.getByText('页面检查: 未请求')).toBeTruthy()
+    expect(view.getByText('Webhook: 已就绪')).toBeTruthy()
+  })
+
+  it('shows a task binding, source, recent binding projects, deletion, and degraded statuses', () => {
+    const controller = new LabelStudioPanelController('http://127.0.0.1:8080'); controller.setOpen(true)
+    const binding = {
+      target: { kind: 'task' as const, projectId: 236 as never, taskId: 487 as never, annotationId: 67 as never },
+      source: 'webhook' as const,
+      boundAt: 10,
+      recentProjects: [
+        { projectId: 236 as never, lastTaskId: 487 as never, lastVisitedAt: 10, availability: 'available' as const },
+        { projectId: 99 as never, lastVisitedAt: 9, availability: 'deleted' as const },
+      ],
+      revision: 1,
+    }
+    const view = mount(controller, vi.fn(), vi.fn(), vi.fn(), vi.fn(), {
+      ...contextSnapshot,
+      sessionContext: { ...sessionContext, binding },
+      inspectionStatus: 'unsupported',
+      webhookStatus: 'unavailable',
+      webhookUnassigned: true,
+    })
+    expect(view.getByText('当前绑定: 项目 236 / 任务 ID 487 / 标注 ID（可选） 67')).toBeTruthy()
+    expect(view.getByText('绑定来源: Webhook')).toBeTruthy()
+    expect(view.getByRole('button', { name: '项目 236' })).toBeTruthy()
+    expect((view.getByRole('button', { name: '项目 99 (已删除)' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(view.getByText('页面检查: 页面不支持')).toBeTruthy()
+    expect(view.getByText('Webhook: 不可用 · 事件未匹配当前会话')).toBeTruthy()
   })
 
   it('confirms the controlled target only after its iframe src commits', async () => {

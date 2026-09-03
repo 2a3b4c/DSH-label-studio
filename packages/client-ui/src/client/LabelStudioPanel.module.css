@@ -85,6 +85,19 @@
   white-space: nowrap;
 }
 
+.contextFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.statusBadge {
+  padding: 2px 7px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-base);
+}
+
 .recentProjects {
   display: flex;
   overflow-x: auto;

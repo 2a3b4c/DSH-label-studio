@@ -1,7 +1,7 @@
 /** Typed browser caller for the Label Studio Connection channel. */
 import type { ConnectionGeneration, ConnectionHandle, ConnectionRpcFailure } from '@deepseek-ai/dsh-client-connection/client';
 import type { SessionId } from '@deepseek-ai/dsh-session/types';
-import type { LabelStudioActiveContext, LabelStudioActiveTarget, LabelStudioEventBatch, LabelStudioFocusCorrelationId, LabelStudioContextSourceId, LabelStudioLeaseOpenResult, LabelStudioLeaseSnapshot, LabelStudioNavigationSequence, LabelStudioPageContext, LabelStudioRpcError, LabelStudioTargetReservation, LabelStudioSessionContextSnapshot } from '@deepseek-ai/dsh-label-studio-protocol';
+import type { LabelStudioActiveContext, LabelStudioActiveTarget, LabelStudioEventBatch, LabelStudioFocusCorrelationId, LabelStudioContextSourceId, LabelStudioLeaseOpenResult, LabelStudioLeaseSnapshot, LabelStudioNavigationSequence, LabelStudioPageContext, LabelStudioInspectPageEvent, LabelStudioInspectPageResponse, LabelStudioRpcError, LabelStudioTargetReservation, LabelStudioSessionContextSnapshot } from '@deepseek-ai/dsh-label-studio-protocol';
 /** Browser dependencies for one logical Label Studio channel. */
 export interface LabelStudioBridgeClientOptions {
     readonly connection: Pick<ConnectionHandle, 'rpc' | 'generation'>;
@@ -57,7 +57,7 @@ export declare function isLabelStudioTransportUnknown(error: unknown): error is 
  * @returns whether the plugin rejected the request.
  */
 export declare function isLabelStudioPluginFailure(error: unknown): error is LabelStudioPluginFailure;
-/** Calls and validates the plugin's seven fixed RPC endpoints. */
+/** Calls and validates the plugin's eight fixed RPC endpoints. */
 export declare class LabelStudioContextBridge {
     private readonly connection;
     private readonly channel;
@@ -135,6 +135,17 @@ export declare class LabelStudioContextBridge {
      * @returns committed context.
      */
     acknowledgeFocus(lease: LabelStudioLeaseSnapshot, correlationId: LabelStudioFocusCorrelationId, targetRevision: number, target: LabelStudioActiveTarget, signal?: AbortSignal): Promise<LabelStudioActiveContext>;
+    /**
+     * Submit one exact current-page inspection outcome.
+     * @param lease - active browser lease.
+     * @param inspectionId - Host-issued inspection identity.
+     * @param outcome - validated structured iframe result.
+     * @param signal - Session/Connection generation cancellation.
+     * @returns idempotent Host acceptance receipt.
+     */
+    commitInspection(lease: LabelStudioLeaseSnapshot, inspectionId: LabelStudioInspectPageEvent['inspectionId'], outcome: LabelStudioInspectPageResponse['outcome'], signal?: AbortSignal): Promise<{
+        readonly accepted: true;
+    }>;
     private mutate;
     private call;
 }

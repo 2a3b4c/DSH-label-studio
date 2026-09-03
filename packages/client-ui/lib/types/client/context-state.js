@@ -44,6 +44,9 @@ export class LabelStudioContextController {
             bufferedEventCount: 0,
             sessionContext: emptySessionContext(),
             sessionContextStatus: 'idle',
+            inspectionStatus: 'idle',
+            webhookStatus: options.webhookStatus ?? 'disabled',
+            webhookUnassigned: false,
             status: 'no-session',
         });
         this.offHost = bridge.onHostChanged(() => { this.hostChanged(); });
@@ -55,7 +58,8 @@ export class LabelStudioContextController {
     bindSession(sessionId) {
         if (this.disposed || this.store.getSnapshot().sessionId === sessionId)
             return;
-        const previous = this.store.getSnapshot().lease;
+        const previousSnapshot = this.store.getSnapshot();
+        const previous = previousSnapshot.lease;
         this.sessionEpoch += 1;
         this.navigationEpoch += 1;
         this.cancelGeneration();
@@ -74,6 +78,9 @@ export class LabelStudioContextController {
             bufferedEventCount: 0,
             sessionContext: emptySessionContext(),
             sessionContextStatus: sessionId === undefined ? 'idle' : 'restoring',
+            inspectionStatus: 'idle',
+            webhookStatus: previousSnapshot.webhookStatus,
+            webhookUnassigned: false,
             status: sessionId === undefined ? 'no-session' : 'leasing',
         });
         if (sessionId !== undefined && this.bridge.currentHost() !== undefined)
@@ -179,7 +186,7 @@ export class LabelStudioContextController {
                 status: 'syncing',
                 error: undefined,
             });
-            const restore = this.navigationQueue.catch(() => { }).then(() => this.performPageSelection(result.sessionContext.page, true));
+            const restore = this.navigationQueue.catch(() => { }).then(() => this.performPageSelection(restorationPage(result.sessionContext), true));
             this.navigationQueue = restore;
             void restore.catch(() => { }).finally(() => {
                 if (this.current(epoch))
@@ -300,6 +307,45 @@ export class LabelStudioContextController {
                 this.commitEvent(event.eventRevision);
                 continue;
             }
+            if (event.kind === 'inspect-current-page') {
+                const lease = this.store.getSnapshot().lease;
+                if (lease === undefined)
+                    return;
+                this.patch({ inspectionStatus: 'inspecting' });
+                try {
+                    const outcome = await this.page.inspectCurrentPage(event, lease, this.generationSignal());
+                    if (!this.current(epoch))
+                        return;
+                    this.patch({ inspectionStatus: outcome ?? 'ready' });
+                }
+                catch (error) {
+                    if (!this.current(epoch))
+                        return;
+                    if (isLabelStudioTransportUnknown(error)) {
+                        this.patch({ inspectionStatus: 'unavailable' });
+                        return;
+                    }
+                    this.patch({ inspectionStatus: inspectionFailureStatus(error) });
+                }
+                this.commitEvent(event.eventRevision);
+                continue;
+            }
+            if (event.kind === 'binding-changed') {
+                const current = this.store.getSnapshot().sessionContext;
+                this.patch({ sessionContext: { ...current, binding: event.binding }, webhookUnassigned: false });
+                this.commitEvent(event.eventRevision);
+                continue;
+            }
+            if (event.kind === 'webhook-status') {
+                this.patch({ webhookStatus: event.status, ...(event.status === 'ready' ? { webhookUnassigned: false } : {}) });
+                this.commitEvent(event.eventRevision);
+                continue;
+            }
+            if (event.kind === 'webhook-unassigned') {
+                this.patch({ webhookUnassigned: true });
+                this.commitEvent(event.eventRevision);
+                continue;
+            }
             if (context.targetRevision === event.targetRevision && context.phase === 'committed'
                 && sameTarget(context.target, event.target)) {
                 this.patch({
@@ -376,7 +422,8 @@ export class LabelStudioContextController {
         const sequence = (restoring && page.view !== 'task'
             ? snapshot.navigationSequence
             : Number(snapshot.navigationSequence) + 1);
-        this.page.setOpen(true);
+        if (!restoring)
+            this.page.setOpen(true);
         this.patch({
             navigationSequence: sequence,
             sessionContextStatus: restoring ? 'restoring' : 'committing',
@@ -664,6 +711,9 @@ function bridgeMessage(error) {
     }
     return error instanceof Error ? error.message : 'Label Studio synchronization failed';
 }
+function inspectionFailureStatus(error) {
+    return bridgeMessage(error).includes('expired') ? 'timeout' : 'unavailable';
+}
 function toError(error) { return error instanceof Error ? error : new Error(bridgeMessage(error)); }
 function sameTarget(left, right) {
     return left.projectId === right.projectId && left.taskId === right.taskId && left.annotationId === right.annotationId;
@@ -676,8 +726,26 @@ function requiredRevision(pending) {
         throw new Error('label-studio client: missing target reservation revision');
     return pending.targetRevision;
 }
+function restorationPage(context) {
+    if (context.page.view !== 'projects' || context.binding.target === undefined)
+        return context.page;
+    const target = context.binding.target;
+    if (target.kind === 'project')
+        return { view: 'project', projectId: target.projectId };
+    return {
+        view: 'task',
+        projectId: target.projectId,
+        taskId: target.taskId,
+        ...(target.annotationId === undefined ? {} : { annotationId: target.annotationId }),
+    };
+}
 function emptySessionContext() {
-    return { page: { view: 'projects' }, recentProjects: [], revision: 0 };
+    return {
+        page: { view: 'projects' },
+        recentProjects: [],
+        revision: 0,
+        binding: { recentProjects: [], revision: 0 },
+    };
 }
 function pageOfTarget(target) {
     return {
@@ -712,6 +780,7 @@ function focusSnapshot(current, event, visitedAt) {
                 availability: 'available',
             }, ...prior],
         revision: event.expectedSessionContextRevision + 1,
+        binding: current.binding,
     };
 }
 function contextFailureStatus(error) {

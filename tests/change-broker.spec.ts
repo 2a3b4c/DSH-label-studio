@@ -40,6 +40,26 @@ function contextStore() {
 }
 
 describe('LabelStudioChangeBroker', () => {
+  it('publishes reconciled bindings and broadcasts identifier-free unassigned status to live leases', async () => {
+    const registry = new LabelStudioContextRegistry(30_000)
+    registry.openLease(SESSION, SOURCE, 0)
+    const broker = new LabelStudioChangeBroker(registry, 8, contextStore().store)
+    const binding = { recentProjects: [], revision: 2 }
+    expect(broker.publishBindingChanged(SESSION, binding)).toEqual({
+      kind: 'binding-changed', binding, eventRevision: 1,
+    })
+    broker.publishWebhookUnassigned()
+    await expect(broker.wait(SESSION, 0, 10, new AbortController().signal)).resolves.toEqual({
+      events: [
+        { kind: 'binding-changed', binding, eventRevision: 1 },
+        { kind: 'webhook-unassigned', reason: 'no-matching-binding', eventRevision: 2 },
+      ],
+      latestRevision: 2,
+      resetRequired: false,
+    })
+    await broker.dispose()
+  })
+
   it('keeps isolated monotonic bounded histories and identifies reset/future cursors', async () => {
     const registry = new LabelStudioContextRegistry(30_000)
     const broker = new LabelStudioChangeBroker(registry, 2, contextStore().store)
@@ -59,6 +79,25 @@ describe('LabelStudioChangeBroker', () => {
     await expect(broker.wait(SESSION, 4, 10, new AbortController().signal))
       .rejects.toMatchObject({ code: 'future-revision' })
     expect(broker.latestRevision(OTHER_SESSION)).toBe(1)
+    await broker.dispose()
+  })
+
+  it('publishes current-page inspections through the existing Session event stream', async () => {
+    const registry = new LabelStudioContextRegistry(30_000)
+    const broker = new LabelStudioChangeBroker(registry, 2, contextStore().store)
+    const event = broker.publishCurrentPageInspection(
+      SESSION,
+      '20000000-0000-4000-8000-000000000002' as never,
+      5_000,
+    )
+    expect(event).toEqual({
+      kind: 'inspect-current-page',
+      inspectionId: '20000000-0000-4000-8000-000000000002',
+      deadlineAt: 5_000,
+      eventRevision: 1,
+    })
+    await expect(broker.wait(SESSION, 0, 10, new AbortController().signal))
+      .resolves.toMatchObject({ events: [event], latestRevision: 1 })
     await broker.dispose()
   })
 

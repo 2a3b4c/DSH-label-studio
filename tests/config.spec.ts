@@ -8,12 +8,18 @@ import {
   DEFAULT_EVENT_HISTORY_SIZE,
   DEFAULT_EVENT_WAIT_TIMEOUT_MS,
   DEFAULT_FOCUS_ACK_TIMEOUT_MS,
+  DEFAULT_CURRENT_PAGE_TIMEOUT_MS,
+  DEFAULT_FRAME_PROXY_HTML_MAX_BYTES,
   DEFAULT_LABEL_STUDIO_BASE_URL,
   DEFAULT_LABEL_STUDIO_LAUNCH_MODE,
   DEFAULT_PYTHON_EXECUTABLE,
   DEFAULT_RECENT_PROJECT_LIMIT,
   DEFAULT_REFRESH_TOKEN_CREDENTIAL,
   DEFAULT_REST_RESPONSE_MAX_BYTES,
+  DEFAULT_MANAGED_WEBHOOK_TIMEOUT_SECONDS,
+  DEFAULT_WEBHOOK_MAX_BODY_BYTES,
+  DEFAULT_WEBHOOK_MODE,
+  DEFAULT_WEBHOOK_PATH,
   resolveConfig,
 } from '../src/config.ts'
 
@@ -28,11 +34,17 @@ describe('resolveConfig', () => {
       eventHistorySize: DEFAULT_EVENT_HISTORY_SIZE,
       eventWaitTimeoutMs: DEFAULT_EVENT_WAIT_TIMEOUT_MS,
       focusAckTimeoutMs: DEFAULT_FOCUS_ACK_TIMEOUT_MS,
+      currentPageTimeoutMs: DEFAULT_CURRENT_PAGE_TIMEOUT_MS,
+      frameProxyHtmlMaxBytes: DEFAULT_FRAME_PROXY_HTML_MAX_BYTES,
       launchMode: DEFAULT_LABEL_STUDIO_LAUNCH_MODE,
       pythonExecutable: DEFAULT_PYTHON_EXECUTABLE,
       recentProjectLimit: DEFAULT_RECENT_PROJECT_LIMIT,
       refreshTokenCredential: DEFAULT_REFRESH_TOKEN_CREDENTIAL,
       restResponseMaxBytes: DEFAULT_REST_RESPONSE_MAX_BYTES,
+      webhookMode: DEFAULT_WEBHOOK_MODE,
+      webhookPath: DEFAULT_WEBHOOK_PATH,
+      webhookMaxBodyBytes: DEFAULT_WEBHOOK_MAX_BODY_BYTES,
+      managedWebhookTimeoutSeconds: DEFAULT_MANAGED_WEBHOOK_TIMEOUT_SECONDS,
       shutdownGraceMs: 5_000,
       startupTimeoutMs: 120_000,
     })
@@ -77,6 +89,44 @@ describe('resolveConfig', () => {
       expect(() => resolveConfig({ [field]: 0 })).toThrow(field)
       expect(() => resolveConfig({ [field]: 1.5 })).toThrow(field)
     }
+  })
+
+  it('validates current-page and decoded HTML limits', () => {
+    expect(resolveConfig({ currentPageTimeoutMs: 17, frameProxyHtmlMaxBytes: 23 }))
+      .toMatchObject({ currentPageTimeoutMs: 17, frameProxyHtmlMaxBytes: 23 })
+    for (const field of ['currentPageTimeoutMs', 'frameProxyHtmlMaxBytes'] as const) {
+      expect(() => resolveConfig({ [field]: 0 })).toThrow(field)
+      expect(() => resolveConfig({ [field]: 1.5 })).toThrow(field)
+    }
+  })
+
+  it('validates Webhook mode, exact route path, body limit, and managed timeout', () => {
+    expect(resolveConfig({
+      webhookMode: 'required', webhookPath: '/custom/hook', webhookMaxBodyBytes: 12, managedWebhookTimeoutSeconds: 7,
+    })).toMatchObject({
+      webhookMode: 'required', webhookPath: '/custom/hook', webhookMaxBodyBytes: 12, managedWebhookTimeoutSeconds: 7,
+    })
+    for (const webhookPath of ['/', 'relative', '/trailing/', '/hook?query=1', '/hook#fragment']) {
+      expect(() => resolveConfig({ webhookPath })).toThrow('webhookPath')
+    }
+    for (const field of ['webhookMaxBodyBytes', 'managedWebhookTimeoutSeconds'] as const) {
+      expect(() => resolveConfig({ [field]: 0 })).toThrow(field)
+      expect(() => resolveConfig({ [field]: 1.5 })).toThrow(field)
+    }
+  })
+
+  it('rejects invalid values for every intent-binding deployment limit', () => {
+    for (const field of [
+      'webhookMaxBodyBytes',
+      'managedWebhookTimeoutSeconds',
+      'currentPageTimeoutMs',
+      'frameProxyHtmlMaxBytes',
+    ] as const) {
+      for (const value of [0, -1, 1.5, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+        expect(() => resolveConfig({ [field]: value })).toThrow(field)
+      }
+    }
+    expect(() => Config({ webhookMode: 'sometimes' as never })).toThrow()
   })
 
   it('requires event waits to finish before the browser lease expires', () => {
@@ -157,5 +207,10 @@ describe('resolveConfig', () => {
   it('normalizes a trailing slash and accepts localhost', () => {
     expect(resolveConfig({ baseUrl: 'http://localhost:9090/' }).baseUrl)
       .toBe('http://localhost:9090')
+  })
+
+  it('rejects HTTPS and path-prefixed loopback endpoints for the frame proxy', () => {
+    expect(() => resolveConfig({ baseUrl: 'https://localhost:8080' })).toThrow('loopback HTTP origin')
+    expect(() => resolveConfig({ baseUrl: 'http://localhost:8080/prefix' })).toThrow('without a path')
   })
 })

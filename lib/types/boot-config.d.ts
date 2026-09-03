@@ -2,9 +2,14 @@
 /** Browser-visible non-secret synchronization configuration. */
 export interface LabelStudioBootConfig {
     readonly baseUrl: string;
+    readonly frameBaseUrl: string;
+    readonly frameCapability: string;
+    readonly inspectionProtocol: 'dsh-label-studio-page/v1';
+    readonly currentPageTimeoutMs: number;
     readonly contextOpenRetryMs: number;
     readonly contextCloseTimeoutMs: number;
     readonly eventHistorySize: number;
+    readonly webhookStatus?: 'disabled' | 'ready' | 'unavailable';
 }
 /**
  * Insert the browser endpoint before the application module starts.
